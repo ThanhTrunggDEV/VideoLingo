@@ -7,6 +7,7 @@ PROVIDERS = {
     "Fish Audio": ("fish_audio",),
     "Microsoft Edge": ("edge_tts",),
     "Local service": ("gpt_sovits",),
+    "OmniVoice": ("omnivoice",),
     "Custom provider": ("custom_tts",),
 }
 KEY_PATHS = {

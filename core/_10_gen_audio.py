@@ -110,7 +110,8 @@ def generate_tts_audio(tasks_df: pd.DataFrame) -> pd.DataFrame:
                 raise e
         
         # for gpt_sovits, do not use parallel to avoid mistakes
-        max_workers = load_key("max_workers") if load_key("tts_method") != "gpt_sovits" else 1
+        local_methods = {"gpt_sovits", "omnivoice"}
+        max_workers = load_key("max_workers") if load_key("tts_method") not in local_methods else 1
         # parallel processing for remaining tasks
         if len(tasks_df) > warmup_size:
             remaining_tasks = tasks_df.iloc[warmup_size:].copy()

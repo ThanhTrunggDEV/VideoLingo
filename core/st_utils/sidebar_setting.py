@@ -396,6 +396,7 @@ def page_setting():
             "custom_tts": t("Custom TTS"),
             "sf_cosyvoice2": t("SiliconFlow CosyVoice2"),
             "f5tts": t("F5-TTS"),
+            "omnivoice": t("OmniVoice"),
         }
         from core.st_utils.tts_settings import select_tts_method
         select_tts = select_tts_method(tts_method_labels)
@@ -485,6 +486,26 @@ def page_setting():
 
         elif select_tts == "edge_tts":
             config_input(t("Edge TTS Voice"), "edge_tts.voice")
+
+        elif select_tts == "omnivoice":
+            st.info(t("OmniVoice runs locally and requires the `omnivoice` package (github.com/k2-fsa/OmniVoice)."))
+            from core.st_utils.tts_settings import save_settings
+            refer_mode_options = {
+                "stable": t("Voice of the video"),
+                "dynamic": t("Refer_dynamic"),
+            }
+            current_mode = load_key_or("omnivoice.refer_mode", "stable")
+            selected_mode = st.selectbox(
+                t("Mode Selection"),
+                options=list(refer_mode_options.keys()),
+                format_func=lambda x: refer_mode_options[x],
+                index=list(refer_mode_options.keys()).index(current_mode) if current_mode in refer_mode_options else 0,
+            )
+            if selected_mode != current_mode:
+                save_settings({"omnivoice.refer_mode": selected_mode})
+                st.rerun()
+            config_input(t("Device"), "omnivoice.device", help=t("auto (cuda:0/mps/cpu), cuda:0, mps, xpu, or cpu"))
+            config_input(t("Diffusion steps"), "omnivoice.num_step", help=t("Diffusion steps: 32 for quality, 16 for speed"))
 
 
 

@@ -164,6 +164,19 @@ gpt_sovits:
 f5tts:
   302_api: 'YOUR_302_API_KEY'
 
+# OmniVoice, local zero-shot voice-cloning TTS (github.com/k2-fsa/OmniVoice)
+omnivoice:
+  # Model id on Hugging Face
+  model: 'k2-fsa/OmniVoice'
+  # Device: 'auto' (cuda:0 -> mps -> cpu), 'cuda:0', 'mps', 'xpu', or 'cpu'
+  device: 'auto'
+  # Model dtype: 'float16', 'bfloat16', or 'float32' (forced on cpu)
+  dtype: 'float16'
+  # Reference voice: 'stable' (first 3-10 s of the video) or 'dynamic' (each line's own clip)
+  refer_mode: 'stable'
+  # Diffusion steps: 32 for quality, 16 for speed
+  num_step: 32
+
 # *Audio speed range
 speed_factor:
   min: 1
