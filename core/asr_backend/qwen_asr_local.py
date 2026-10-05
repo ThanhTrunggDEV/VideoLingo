@@ -577,6 +577,31 @@ def _torch_device():
     return "cpu", torch.float32
 
 
+def _load_transformers_model(cls, source, device, dtype):
+    """from_pretrained with eager attention on pre-Ampere GPUs.
+
+    The default SDPA path dispatches to the flash kernel, which raises
+    ``RuntimeError: FlashAttention only supports Ampere GPUs or newer`` on
+    older cards (or when auto-selection picks one). Eager attention runs
+    correctly on every GPU; Ampere+ keeps the default fast path.
+    """
+    import torch
+    from core.utils.gpu_utils import attn_implementation_for_device, describe_torch_device
+    rprint(f"[cyan]🎮 Qwen device:[/cyan] {describe_torch_device(device, torch)}, "
+           f"[cyan]dtype:[/cyan] {dtype}")
+    attn = attn_implementation_for_device(device, torch)
+    if attn is not None:
+        rprint(f"[yellow]Pre-Ampere GPU detected: loading with attn_implementation='{attn}' "
+               f"(no FlashAttention).[/yellow]")
+        try:
+            return cls.from_pretrained(
+                source, dtype=dtype, device_map=device, attn_implementation=attn)
+        except TypeError:
+            # Very old transformers without the attn_implementation kwarg.
+            pass
+    return cls.from_pretrained(source, dtype=dtype, device_map=device)
+
+
 @contextmanager
 def asr_session(engine, repo_id):
     """Load Qwen3-ASR once and yield run(clip, qwen_language or None, max_tokens=None) -> (language, text)."""
@@ -598,10 +623,8 @@ def asr_session(engine, repo_id):
             import torch
             from transformers import AutoModelForMultimodalLM, AutoProcessor
             device, dtype = _torch_device()
-            rprint(f"[cyan]🎮 Qwen3-ASR device:[/cyan] {device}, [cyan]dtype:[/cyan] {dtype}")
             processor = AutoProcessor.from_pretrained(source)
-            model = AutoModelForMultimodalLM.from_pretrained(
-                source, dtype=dtype, device_map=device)
+            model = _load_transformers_model(AutoModelForMultimodalLM, source, device, dtype)
             model.eval()
 
             def run(clip, language, max_tokens=None):
@@ -682,8 +705,8 @@ def _align(engine, repo_id, jobs):
             from transformers import AutoModelForTokenClassification, AutoProcessor
             device, dtype = _torch_device()
             align_processor = AutoProcessor.from_pretrained(source)
-            aligner = AutoModelForTokenClassification.from_pretrained(
-                source, dtype=dtype, device_map=device)
+            aligner = _load_transformers_model(
+                AutoModelForTokenClassification, source, device, dtype)
             aligner.eval()
 
             def align(clip, text, lang):

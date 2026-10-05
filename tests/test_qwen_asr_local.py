@@ -591,7 +591,9 @@ def test_transformers_transcribe_call_convention(engines):
         [("English", "Hello, world."), ("English", "Hello, world.")]
     source, kwargs = engines["asr_load"]
     assert source == "src:Qwen/Qwen3-ASR-1.7B-hf"
-    assert kwargs == {"dtype": "bf16", "device_map": "cuda:0"}
+    assert kwargs["dtype"] == "bf16" and kwargs["device_map"] == "cuda:0"
+    # Pre-Ampere GPUs (no FlashAttention) additionally load with eager attention.
+    assert kwargs.get("attn_implementation") in (None, "eager")
     assert len(engines["asr"]) == 2
     # Budget by clip length (native generate uses max_new_tokens per clip).
     assert engines["asr_tokens"] == [qwen.token_budget(1), qwen.token_budget(0.1)]
@@ -615,7 +617,10 @@ def test_align_call_conventions(engines):
     jobs = [(CLIPS[0], "Hello, world.", "English")]
     assert qwen._align("transformers", "Qwen/Qwen3-ForcedAligner-0.6B-hf", jobs) == \
         [[("Hello", 0.1, 0.4), ("world", 0.5, 0.9)]]
-    assert engines["align_load"] == ("src:Qwen/Qwen3-ForcedAligner-0.6B-hf", {"dtype": "bf16", "device_map": "cuda:0"})
+    assert engines["align_load"][0] == "src:Qwen/Qwen3-ForcedAligner-0.6B-hf"
+    align_kwargs = engines["align_load"][1]
+    assert align_kwargs["dtype"] == "bf16" and align_kwargs["device_map"] == "cuda:0"
+    assert align_kwargs.get("attn_implementation") in (None, "eager")
     assert engines["align"] == [("Hello, world.", "English")]
     assert qwen._align("mlx", "m", [(CLIPS[0], "你好。", "Chinese")]) == [[("你", 0.0, 0.2), ("好", 0.2, 0.4)]]
     assert engines["mlx"][-1][2] == {"text": "你好。", "language": "Chinese"}

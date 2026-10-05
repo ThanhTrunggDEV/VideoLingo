@@ -258,6 +258,71 @@ def cuda_device_name(index: int, torch_mod=None) -> str | None:
         return None
 
 
+def cuda_supports_flash(device: str, torch_mod=None) -> bool | None:
+    """Whether a CUDA device supports FlashAttention (Ampere+, capability >= 8.0).
+
+    Returns True/False when the capability is known, None when it cannot be
+    determined (torch missing, non-CUDA device, or query failed). Callers
+    should only change behavior on an explicit False and keep the default
+    fast path otherwise.
+    """
+    idx = parse_cuda_index(device)
+    if idx is None or idx < 0:
+        return None
+    try:
+        import torch as torch_real
+    except Exception:
+        torch_real = None
+    mod = torch_mod if torch_mod is not None else torch_real
+    if mod is None:
+        return None
+    try:
+        major, _minor = mod.cuda.get_device_capability(idx)
+        return int(major) >= 8
+    except Exception:
+        return None
+
+
+def attn_implementation_for_device(device: str, torch_mod=None) -> str | None:
+    """'eager' for pre-Ampere CUDA GPUs (no FlashAttention), else None.
+
+    transformers' SDPA path dispatches to the flash kernel, which raises
+    ``RuntimeError: FlashAttention only supports Ampere GPUs or newer`` on
+    older cards (Pascal/Turing/...). Loading those models with
+    ``attn_implementation="eager"`` avoids the flash path entirely and runs
+    correctly everywhere, at some speed cost. Ampere+ keeps the default
+    (fast) implementation, so pass the result only when it is not None.
+    """
+    try:
+        if str(device).strip().lower() in ("cpu", "mps", "xpu"):
+            return None
+    except Exception:
+        return None
+    supported = cuda_supports_flash(device, torch_mod)
+    return "eager" if supported is False else None
+
+
+def describe_torch_device(device: str, torch_mod=None) -> str:
+    """'cuda:1 (RTX A4000, cap 8.6)' style description for logs."""
+    idx = parse_cuda_index(device)
+    if idx is None:
+        return str(device)
+    name = cuda_device_name(idx, torch_mod) or "CUDA GPU"
+    cap_note = ""
+    try:
+        import torch as torch_real
+    except Exception:
+        torch_real = None
+    mod = torch_mod if torch_mod is not None else torch_real
+    try:
+        if mod is not None:
+            major, minor = mod.cuda.get_device_capability(idx)
+            cap_note = f", cap {major}.{minor}"
+    except Exception:
+        pass
+    return f"{device} ({name}{cap_note})"
+
+
 def ffmpeg_gpu_args(torch_mod=None) -> list[str]:
     """Extra ffmpeg args selecting the best GPU for h264_nvenc, else [].
 
