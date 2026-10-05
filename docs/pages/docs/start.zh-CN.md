@@ -29,6 +29,7 @@ VideoLingo提供了多种 tts 接入方式，以下是对比（如不使用配�
 | 🎙️ SiliconFlow FishTTS | [硅基流动](https://cloud.siliconflow.cn/i/ttKDEsxE) | 语音克隆 | 克隆效果不稳定 | 😃 | 😃 |
 | Edge TTS | 在线服务 | 此适配器无需单独 API 密钥 | 需要联网 | — | — |
 | 🗣️ GPT-SoVITS | 本地 | 最强语音克隆 | 只支持中英文，需要本地训练推理，配置麻烦 | 🏆 | 🚫 |
+| 🗣️ OmniVoice | 本地 | 语音克隆，本地运行，无需 API 密钥 | 需要本地 GPU 才有合理速度 | — | — |
 
 - SiliconFlow FishTTS 请在 [硅基流动](https://cloud.siliconflow.cn/i/ttKDEsxE) 获取key，注意克隆功能需要付费充值积分；
 - OpenAI TTS 使用 [OpenLux](https://www.openlux.ai/register?aff=wKYu)，和 LLM 用同一个 key 即可。其他兼容 OpenAI 语音接口的服务，可以在 `config.yaml` 里修改 `openai_tts.base_url` 和 `openai_tts.model`；

@@ -56,6 +56,7 @@ The following outlines the core technical modules and workflows:
     *   `core/tts_backend/custom_tts.py`: Placeholder/template for integrating custom TTS engines.
     *   `core/tts_backend/edge_tts.py`: Interface to Microsoft Edge TTS using the `edge-tts` command-line tool.
     *   `core/tts_backend/gpt_sovits_tts.py`: Interface to a local GPT-SoVITS server, including server startup logic.
+    *   `core/tts_backend/omnivoice_tts.py`: Local zero-shot voice-cloning TTS (OmniVoice, mandatory on Windows/Linux/Intel Mac). Loads the model once on the best-CUDA/mps/cpu device, caches the voice prompt, supports stable (first 3-10 s of the video) and dynamic (per-line) reference modes, and serializes generation with a lock.
     *   `core/tts_backend/openai_tts.py`: Interface to the OpenAI Text-to-Speech API.
     *   `core/tts_backend/sf_cosyvoice2.py`: Interface to the SiliconFlow CosyVoice2 TTS API, supporting reference audio.
     *   `core/tts_backend/sf_fishtts.py`: Interface to the SiliconFlow Fish TTS API, supporting preset, custom, and dynamic voice modes with reference audio.

@@ -56,6 +56,7 @@ Videolingo 是一个高度集成的视频翻译系统，能够自动执行一系
     *   `core/tts_backend/custom_tts.py`: 用于集成自定义 TTS 引擎的占位符/模板。
     *   `core/tts_backend/edge_tts.py`: 使用 `edge-tts` 命令行工具的 Microsoft Edge TTS 的接口。
     *   `core/tts_backend/gpt_sovits_tts.py`: 本地 GPT-SoVITS 服务器的接口，包括服务器启动逻辑。
+    *   `core/tts_backend/omnivoice_tts.py`: 本地零样本语音克隆 TTS（OmniVoice，Windows/Linux/Intel Mac 强制安装）。在最优 CUDA/mps/cpu 设备上一次性加载模型，缓存音色提示，支持稳定（视频前 3-10 秒）和动态（逐行）两种参考模式，并用锁串行化生成。
     *   `core/tts_backend/openai_tts.py`: OpenAI 文本转语音 API 的接口。
     *   `core/tts_backend/sf_cosyvoice2.py`: SiliconFlow CosyVoice2 TTS API 的接口，支持参考音频。
     *   `core/tts_backend/sf_fishtts.py`: SiliconFlow Fish TTS API 的接口，支持具有参考音频的预设、自定义和动态语音模式。
