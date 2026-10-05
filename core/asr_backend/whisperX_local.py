@@ -83,15 +83,36 @@ def resolve_whisper_model(model_name, model_dir):
 
 @except_handler("WhisperX processing error:")
 def transcribe_audio(raw_audio_file, vocal_audio_file, start, end):
+    from core.utils.gpu_utils import get_best_cuda_index, use_best_cuda_device
     WHISPER_LANGUAGE = load_key("whisper.language")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    rprint(f"🚀 Starting WhisperX using device: {device} ...")
-    
+    best_idx = get_best_cuda_index(torch)
+    if best_idx is not None:
+        # Point torch's current device at the best GPU so bare "cuda"
+        # (what whisperx/faster-whisper expects) uses it, and remember
+        # the index for device_index + memory-based batch sizing.
+        use_best_cuda_device(torch)
+        device, device_index = "cuda", best_idx
+    else:
+        device, device_index = "cpu", None
+    try:
+        rprint(f"🚀 Starting WhisperX using device: {device}"
+               f"{f':{device_index}' if device_index is not None else ''} ...")
+    except Exception:
+        pass
+
     if device == "cuda":
-        gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        props_idx = device_index if device_index is not None else 0
+        try:
+            gpu_mem = torch.cuda.get_device_properties(props_idx).total_memory / (1024**3)
+        except Exception:
+            gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         batch_size = 16 if gpu_mem > 8 else 2
         compute_type = "float16" if torch.cuda.is_bf16_supported() else "int8"
-        rprint(f"[cyan]🎮 GPU memory:[/cyan] {gpu_mem:.2f} GB, [cyan]📦 Batch size:[/cyan] {batch_size}, [cyan]⚙️ Compute type:[/cyan] {compute_type}")
+        try:
+            name = torch.cuda.get_device_name(props_idx)
+        except Exception:
+            name = f"cuda:{props_idx}"
+        rprint(f"[cyan]🎮 GPU:[/cyan] {name} (cuda:{props_idx}), [cyan]memory:[/cyan] {gpu_mem:.2f} GB, [cyan]📦 Batch size:[/cyan] {batch_size}, [cyan]⚙️ Compute type:[/cyan] {compute_type}")
     else:
         batch_size = 1
         compute_type = "int8"
@@ -122,7 +143,16 @@ def transcribe_audio(raw_audio_file, vocal_audio_file, start, end):
         asr_options=asr_options,
         local_files_only=True,
     )
-    model = whisperx.load_model(model_name, **load_kwargs)
+    if device == "cuda" and device_index is not None:
+        # whisperx/faster-whisper selects the card via device_index.
+        load_kwargs["device_index"] = device_index
+    try:
+        model = whisperx.load_model(model_name, **load_kwargs)
+    except TypeError:
+        # Older whisperx without device_index: fall back; torch current
+        # device was already pointed at the best GPU above.
+        load_kwargs.pop("device_index", None)
+        model = whisperx.load_model(model_name, **load_kwargs)
 
     def load_audio_segment(audio_file, start, end):
         # Use whisperx's ffmpeg-based loader instead of librosa.load() which

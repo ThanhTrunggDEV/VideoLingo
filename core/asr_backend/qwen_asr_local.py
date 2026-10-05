@@ -570,9 +570,10 @@ def _free(engine):
 
 def _torch_device():
     import torch
-    if torch.cuda.is_available():
-        dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        return "cuda:0", dtype
+    from core.utils.gpu_utils import resolve_torch_device, torch_dtype_for_device
+    device = resolve_torch_device("auto", torch)
+    if device.startswith("cuda"):
+        return device, torch_dtype_for_device(device, torch)
     return "cpu", torch.float32
 
 

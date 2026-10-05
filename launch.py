@@ -45,7 +45,17 @@ def main():
     if torch_ver:
         import torch
         if torch.cuda.is_available():
-            log(f"torch: {torch_ver}, cuda: {torch.version.cuda}, gpu: {torch.cuda.get_device_name(0)}")
+            try:
+                from core.utils.gpu_utils import describe_best_gpu
+                best = describe_best_gpu(torch)
+            except Exception:
+                best = None
+            try:
+                count = torch.cuda.device_count()
+                names = [f"{i}:{torch.cuda.get_device_name(i)}" for i in range(count)]
+                log(f"torch: {torch_ver}, cuda: {torch.version.cuda}, gpus: [{'; '.join(names)}], best: {best or torch.cuda.get_device_name(0)}")
+            except Exception:
+                log(f"torch: {torch_ver}, cuda: {torch.version.cuda}, gpu: {torch.cuda.get_device_name(0)}")
         elif apple_silicon:
             # Local ASR runs on MLX here, not CUDA.
             log(f"torch: {torch_ver} (Apple Silicon; local ASR uses MLX)")

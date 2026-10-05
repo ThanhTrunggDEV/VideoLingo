@@ -168,7 +168,7 @@ f5tts:
 omnivoice:
   # Model id on Hugging Face
   model: 'k2-fsa/OmniVoice'
-  # Device: 'auto' (cuda:0 -> mps -> cpu), 'cuda:0', 'mps', 'xpu', or 'cpu'
+  # Device: 'auto' (best cuda by free VRAM -> mps -> xpu -> cpu), 'cuda', 'cuda:0', 'cuda:1', 'mps', 'xpu', or 'cpu'
   device: 'auto'
   # Model dtype: 'float16', 'bfloat16', or 'float32' (forced on cpu)
   dtype: 'float16'

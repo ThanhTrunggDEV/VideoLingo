@@ -86,8 +86,9 @@ def merge_video_audio():
     cmd.extend(['-map', '[v]' if burn_subtitles else '0:v:0', '-map', '[a]' if has_background else '1:a'])
     encoder = []
     if load_key("ffmpeg_gpu"):
-        rprint("[bold green]Using GPU acceleration...[/bold green]")
-        encoder = ['-c:v', 'h264_nvenc']
+        from core.utils.gpu_utils import describe_best_gpu, ffmpeg_gpu_args
+        rprint(f"[bold green]Using GPU acceleration ({describe_best_gpu()})...[/bold green]")
+        encoder = ['-c:v', 'h264_nvenc', *ffmpeg_gpu_args()]
     audio_output = ['-c:a', 'aac', '-b:a', '192k', DUB_VIDEO]
 
     if burn_subtitles:

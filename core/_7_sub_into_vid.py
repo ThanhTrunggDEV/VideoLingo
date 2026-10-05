@@ -60,8 +60,9 @@ def merge_subtitles_to_video():
 
     ffmpeg_gpu = load_key("ffmpeg_gpu")
     if ffmpeg_gpu:
-        rprint("[bold green]will use GPU acceleration.[/bold green]")
-        ffmpeg_cmd.extend(['-c:v', 'h264_nvenc'])
+        from core.utils.gpu_utils import describe_best_gpu, ffmpeg_gpu_args
+        rprint(f"[bold green]will use GPU acceleration ({describe_best_gpu()}).[/bold green]")
+        ffmpeg_cmd.extend(['-c:v', 'h264_nvenc', *ffmpeg_gpu_args()])
     ffmpeg_cmd.extend(['-y', OUTPUT_VIDEO])
 
     rprint("🎬 Start merging subtitles to video...")

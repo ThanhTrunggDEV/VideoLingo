@@ -26,13 +26,19 @@ _stable_ref_value = None
 
 
 def _resolve_device(device, torch):
-    if device and device != "auto":
-        return device
-    if torch.cuda.is_available():
-        return "cuda:0"
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+    from core.utils.gpu_utils import resolve_torch_device
+    # Explicit values ('cuda:1', 'mps', 'xpu', 'cpu') pass through;
+    # 'auto'/'cuda' pick the GPU with the most free VRAM.
+    resolved = resolve_torch_device(device or "auto", torch)
+    # Legacy auto order was cuda:0 -> mps -> cpu; keep mps fallback for
+    # torch fakes/tests that lack resolve support.
+    if resolved == "cpu":
+        try:
+            if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+                return "mps"
+        except Exception:
+            pass
+    return resolved
 
 
 def _torch_dtype(name, torch, device):

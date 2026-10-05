@@ -8,7 +8,6 @@ from rich import print as rprint
 from demucs.pretrained import get_model
 import numpy as np
 from demucs.audio import AudioFile, convert_audio_channels
-from torch.cuda import is_available as is_cuda_available
 from typing import Optional
 from demucs.api import Separator
 from demucs.apply import BagOfModels
@@ -20,7 +19,15 @@ class PreloadedSeparator(Separator):
     def __init__(self, model: BagOfModels, shifts: int = 1, overlap: float = 0.25,
                  split: bool = True, segment: Optional[int] = None, jobs: int = 0):
         self._model, self._audio_channels, self._samplerate = model, model.audio_channels, model.samplerate
-        device = "cuda" if is_cuda_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        from core.utils.gpu_utils import resolve_torch_device, use_best_cuda_device
+        device = resolve_torch_device("auto", torch)
+        if device.startswith("cuda"):
+            try:
+                use_best_cuda_device(torch)
+            except Exception:
+                pass
+            if ":" not in device:
+                device = "cuda"
         self.update_parameter(device=device, shifts=shifts, overlap=overlap, split=split,
                             segment=segment, jobs=jobs, progress=True, callback=None, callback_arg=None)
 
