@@ -7,7 +7,7 @@
 VideoLingo 是一站式视频翻译本地化配音工具，能够一键生成 Netflix 级别的高质量字幕，告别生硬机翻，告别多行字幕，还能加上高质量的克隆配音，让全世界的知识能够跨越语言的障碍共享。
 
 主要特点和功能：
-- 🎥 使用 yt-dlp 从 Youtube 链接下载视频
+- 🎥 使用 yt-dlp 从视频链接下载视频（YouTube、Bilibili 等）
 
 - **🎙️ 使用 Qwen3-ASR + ForcedAligner 进行单词级时间轴字幕识别**
 

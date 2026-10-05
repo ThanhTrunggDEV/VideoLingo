@@ -15,7 +15,7 @@
 VideoLingo réunit reconnaissance vocale, traduction, segmentation des sous-titres et doublage dans Streamlit. Il produit des fichiers de sous-titres et, en option, des vidéos sous-titrées ou doublées. La qualité dépend de l'audio source, de la langue et des modèles choisis.
 
 Fonctionnalités principales :
-- 🎥 Téléchargement de vidéos YouTube via yt-dlp
+- 🎥 Téléchargement de vidéos via yt-dlp (YouTube, Bilibili, ...)
 
 - Reconnaissance vocale et alignement au niveau des mots avec Qwen3-ASR + Qwen3-ForcedAligner
 

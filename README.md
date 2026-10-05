@@ -15,7 +15,7 @@
 VideoLingo combines speech recognition, subtitle translation, segmentation and dubbing in a Streamlit interface. It produces subtitle files and optionally subtitled or dubbed videos. Translation quality depends on the source audio, language and chosen models.
 
 Key features:
-- 🎥 YouTube video download via yt-dlp
+- 🎥 Video download via yt-dlp (YouTube, Bilibili, ...)
 
 - Word-level speech recognition and alignment with Qwen3-ASR + Qwen3-ForcedAligner
 

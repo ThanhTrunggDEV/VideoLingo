@@ -133,7 +133,7 @@ def download_video_section():
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            url = st.text_input(t("Enter YouTube link:"))
+            url = st.text_input(t("Enter video link (YouTube/Bilibili/...):"))
         with col2:
             res_dict = {
                 "360p": "360",
@@ -145,7 +145,7 @@ def download_video_section():
             default_idx = list(res_dict.values()).index(target_res) if target_res in res_dict.values() else 0
             res_display = st.selectbox(t("Resolution"), options=res_options, index=default_idx)
             res = res_dict[res_display]
-        with st.expander(t("Youtube Settings")):
+        with st.expander(t("Download Settings")):
             cookies_path = st.text_input(
                 t("Cookies Path"),
                 value=load_key("youtube.cookies_path") or "",
@@ -162,7 +162,7 @@ def download_video_section():
                 except Exception as e:
                     st.error(f"{t('Download failed')}: {e}")
                     if needs_cookies(e):
-                        st.info(t("This video requires sign-in. Export cookies.txt from your browser and fill in its path under Youtube Settings."))
+                        st.info(t("This video requires sign-in. Export cookies.txt from your browser and fill in its path under Download Settings."))
                     return False
                 st.rerun()
 

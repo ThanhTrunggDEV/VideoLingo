@@ -5,7 +5,7 @@
 VideoLingo is an all-in-one video translation, localization, and dubbing tool aimed at generating Netflix-quality subtitles. It eliminates stiff machine translations and multi-line subtitles while adding high-quality dubbing, enabling global knowledge sharing across language barriers.
 
 Key features:
-- 🎥 YouTube video download via yt-dlp
+- 🎥 Video download via yt-dlp (YouTube, Bilibili, ...)
 
 - **🎙️ Word-level subtitle recognition with Qwen3-ASR + ForcedAligner**
 

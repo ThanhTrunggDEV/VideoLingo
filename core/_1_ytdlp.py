@@ -35,6 +35,9 @@ def needs_cookies(error):
     return any(hint in message for hint in ("sign in to confirm", "--cookies", "login required"))
 
 def download_video_ytdlp(url, save_path='output', resolution='1080'):
+    """Download a video with yt-dlp (YouTube, Bilibili/b23.tv and other supported sites).
+
+    Bilibili videos that require sign-in need a cookies.txt path (Download Settings)."""
     os.makedirs(save_path, exist_ok=True)
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best' if resolution == 'best' else f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]',

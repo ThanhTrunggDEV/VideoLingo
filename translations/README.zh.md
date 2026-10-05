@@ -17,7 +17,7 @@
 VideoLingo 在 Streamlit 界面中整合语音识别、字幕翻译、分句和配音，可生成字幕文件，以及可选的字幕视频或配音视频。翻译质量取决于原始音频、语言和所选模型。
 
 主要特点和功能：
-- 🎥 使用 yt-dlp 从 Youtube 链接下载视频
+- 🎥 使用 yt-dlp 从视频链接下载视频（YouTube、Bilibili 等）
 
 - 使用 Qwen3-ASR + Qwen3-ForcedAligner 进行词级语音识别与时间对齐
 
