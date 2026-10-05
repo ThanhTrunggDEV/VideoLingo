@@ -48,7 +48,13 @@ def _get_model(settings):
     if _model is not None:
         return _model
     import torch
-    from omnivoice import OmniVoice
+    try:
+        from omnivoice import OmniVoice
+    except ImportError as exc:
+        raise ImportError(
+            "OmniVoice is not installed. Run `uv run start.py` (Windows/Linux auto-installs "
+            "omnivoice) or `python installer.py`. See github.com/k2-fsa/OmniVoice."
+        ) from exc
 
     device = _resolve_device(settings.get("device") or "auto", torch)
     dtype = _torch_dtype(settings.get("dtype") or "float16", torch, device)

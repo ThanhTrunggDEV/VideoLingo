@@ -488,7 +488,11 @@ def page_setting():
             config_input(t("Edge TTS Voice"), "edge_tts.voice")
 
         elif select_tts == "omnivoice":
-            st.info(t("OmniVoice runs locally and requires the `omnivoice` package (github.com/k2-fsa/OmniVoice)."))
+            try:
+                import omnivoice  # noqa: F401
+            except ImportError:
+                st.error(t("OmniVoice runs locally and requires the `omnivoice` package (github.com/k2-fsa/OmniVoice)."))
+                st.caption("Run: uv run start.py (auto-installs omnivoice on Windows/Linux)")
             from core.st_utils.tts_settings import save_settings
             refer_mode_options = {
                 "stable": t("Voice of the video"),

@@ -103,7 +103,7 @@ def test_language_mapping():
 
 
 def test_language_table_matches_qwen_supported_languages():
-    # qwen_asr.inference.utils.SUPPORTED_LANGUAGES (qwen-asr 0.0.6)
+    # Native transformers Qwen3-ASR-hf checkpoints (0.6B/1.7B) supported languages.
     supported = {"Chinese", "English", "Cantonese", "Arabic", "German", "French", "Spanish", "Portuguese",
                  "Indonesian", "Italian", "Korean", "Russian", "Thai", "Vietnamese", "Japanese", "Turkish",
                  "Hindi", "Malay", "Dutch", "Swedish", "Danish", "Finnish", "Polish", "Czech", "Filipino",
@@ -128,11 +128,11 @@ def platform_env(monkeypatch):
 
 @pytest.mark.parametrize("apple,installed,requested,expected", [
     (True, {"mlx_audio"}, "auto", "mlx"),
-    (True, {"mlx_audio", "qwen_asr"}, "auto", "mlx"),
-    (True, {"qwen_asr"}, "auto", "transformers"),
-    (False, {"qwen_asr"}, "auto", "transformers"),
-    (False, {"qwen_asr", "mlx_audio"}, "AUTO", "transformers"),
-    (True, {"mlx_audio", "qwen_asr"}, "transformers", "transformers"),
+    (True, {"mlx_audio", "transformers"}, "auto", "mlx"),
+    (True, {"transformers"}, "auto", "transformers"),
+    (False, {"transformers"}, "auto", "transformers"),
+    (False, {"transformers", "mlx_audio"}, "AUTO", "transformers"),
+    (True, {"mlx_audio", "transformers"}, "transformers", "transformers"),
     (True, {"mlx_audio"}, "mlx", "mlx"),
 ])
 def test_resolve_engine(platform_env, apple, installed, requested, expected):
@@ -141,11 +141,11 @@ def test_resolve_engine(platform_env, apple, installed, requested, expected):
 
 
 @pytest.mark.parametrize("apple,installed,requested,package", [
-    (False, set(), "auto", "qwen-asr"),
-    # Apple Silicon requirements install mlx-audio; never tell a Mac user to install qwen-asr.
+    (False, set(), "auto", "transformers"),
+    # Apple Silicon requirements install mlx-audio; never tell a Mac user to install transformers for MLX.
     (True, set(), "auto", "mlx-audio"),
-    (True, {"mlx_audio"}, "transformers", "qwen-asr"),
-    (False, {"qwen_asr"}, "mlx", "mlx-audio"),
+    (True, {"mlx_audio"}, "transformers", "transformers"),
+    (False, {"transformers"}, "mlx", "mlx-audio"),
 ])
 def test_missing_engine_package_explains_fix(platform_env, apple, installed, requested, package):
     platform_env(apple, installed)
@@ -159,7 +159,7 @@ def test_missing_engine_package_explains_fix(platform_env, apple, installed, req
 
 
 def test_invalid_engine_and_model_size(platform_env):
-    platform_env(False, {"qwen_asr"})
+    platform_env(False, {"transformers"})
     with pytest.raises(ValueError, match="qwen_engine"):
         qwen.resolve_engine("vllm")
     assert qwen.model_size("1.7B") == "1.7b" and qwen.model_size("0.6b") == "0.6b"
@@ -168,7 +168,7 @@ def test_invalid_engine_and_model_size(platform_env):
 
 
 def test_configured_defaults_are_used(monkeypatch, platform_env):
-    platform_env(False, {"qwen_asr"})
+    platform_env(False, {"transformers"})
     monkeypatch.setattr(qwen, "load_key_or", lambda key, default: default)
     assert qwen.model_size() == "1.7b"
     assert qwen.resolve_engine() == "transformers"
@@ -176,11 +176,11 @@ def test_configured_defaults_are_used(monkeypatch, platform_env):
 
 def test_model_source_prefers_complete_local_copy(monkeypatch, tmp_path):
     monkeypatch.setattr(qwen, "load_key", lambda key: str(tmp_path))
-    assert qwen._model_source("Qwen/Qwen3-ASR-1.7B") == "Qwen/Qwen3-ASR-1.7B"
-    (tmp_path / "Qwen3-ASR-1.7B").mkdir()
-    assert qwen._model_source("Qwen/Qwen3-ASR-1.7B") == "Qwen/Qwen3-ASR-1.7B"
-    (tmp_path / "Qwen3-ASR-1.7B" / "config.json").write_text("{}")
-    assert qwen._model_source("Qwen/Qwen3-ASR-1.7B") == str((tmp_path / "Qwen3-ASR-1.7B").resolve())
+    assert qwen._model_source("Qwen/Qwen3-ASR-1.7B-hf") == "Qwen/Qwen3-ASR-1.7B-hf"
+    (tmp_path / "Qwen3-ASR-1.7B-hf").mkdir()
+    assert qwen._model_source("Qwen/Qwen3-ASR-1.7B-hf") == "Qwen/Qwen3-ASR-1.7B-hf"
+    (tmp_path / "Qwen3-ASR-1.7B-hf" / "config.json").write_text("{}")
+    assert qwen._model_source("Qwen/Qwen3-ASR-1.7B-hf") == str((tmp_path / "Qwen3-ASR-1.7B-hf").resolve())
 
 
 def test_model_table():
@@ -254,14 +254,14 @@ def test_transcribe_audio_structure_offsets_and_cache_validity(pipeline):
     pipeline["asr"] = lambda a, b, language: (language, "Hello, world." if a < 1 else "Bye now.")
     result = qwen.transcribe_audio("raw.wav", "vocal.mp3", 60, 260)
 
-    assert pipeline["calls"]["session"] == ("transformers", "Qwen/Qwen3-ASR-0.6B")
+    assert pipeline["calls"]["session"] == ("transformers", "Qwen/Qwen3-ASR-0.6B-hf")
     calls = window_calls(pipeline)
     # Forced language: one call per window with the language (no retry).
     assert [language for *_, language in calls] == ["English", "English"]
     lengths = [seconds for _, seconds, _ in calls]
     assert sum(lengths) == pytest.approx(200) and max(lengths) <= 180
     engine, repo, jobs = pipeline["calls"]["align"]
-    assert repo == "Qwen/Qwen3-ForcedAligner-0.6B"
+    assert repo == "Qwen/Qwen3-ForcedAligner-0.6B-hf"
     # Alignment runs on the vocal track (same sample indices) with the forced language.
     assert [(c, lang) for c, _, lang in jobs] == [(VOCAL_BASE, "English"), (VOCAL_BASE + calls[1][0], "English")]
 
@@ -464,7 +464,7 @@ def test_load_audio_segment_reports_ffmpeg_stderr(tmp_path):
 
 
 # ------------------------------------------------------------------
-# Engine wiring against fake qwen-asr / mlx-audio / torch modules
+# Engine wiring against fake native transformers / mlx-audio / torch modules
 # ------------------------------------------------------------------
 
 @pytest.fixture
@@ -477,30 +477,85 @@ def engines(monkeypatch):
     monkeypatch.setattr(qwen, "check_cancel", lambda: None)
     item = lambda text, a, b: SimpleNamespace(text=text, start_time=a, end_time=b)
 
+    class FakeInputs(dict):
+        def to(self, *args, **kwargs):
+            return self
+
+    class FakeTensor:
+        shape = (1, 10)
+        def __getitem__(self, key):
+            # output_ids[:, 10:] slicing in asr_session
+            if isinstance(key, tuple):
+                return [[1, 2, 3]]
+            return [1, 2, 3]
+
+    class FakeProcessor:
+        def __init__(self, source):
+            self.source = source
+
+        def apply_transcription_request(self, audio, language=None, **kwargs):
+            import os
+            size = os.path.getsize(audio) if isinstance(audio, str) else 0
+            calls.setdefault("asr", []).append((size, language))
+            calls.setdefault("asr_audio", []).append(audio)
+            inputs = FakeInputs(input_ids=FakeTensor())
+            return inputs
+
+        def decode(self, generated, return_format=None):
+            if return_format == "parsed":
+                lang = calls.get("asr_forced", calls["asr"][-1][1] if calls.get("asr") else None)
+                return [{"language": lang or "English", "transcription": " Hello, world. "}]
+            return [" Hello, world. "]
+
+        def prepare_forced_aligner_inputs(self, audio, transcript, language):
+            calls.setdefault("align", []).append((transcript, language))
+            calls.setdefault("align_audio", []).append(audio)
+            if calls.get("fail"):
+                raise RuntimeError("alignment failed")
+            return FakeInputs(input_ids=FakeTensor()), transcript.split()
+
+        def decode_forced_alignment(self, logits, input_ids, word_lists, timestamp_token_id):
+            return [[{"text": "Hello", "start_time": 0.1, "end_time": 0.4},
+                     {"text": "world", "start_time": 0.5, "end_time": 0.9}]]
+
     class ASRModel:
+        def __init__(self, source, kwargs):
+            self.source = source
+            self.device = "cuda:0"
+            self.dtype = "bf16"
+
         @classmethod
         def from_pretrained(cls, source, **kwargs):
             calls["asr_load"] = (source, kwargs)
-            return cls()
+            return cls(source, kwargs)
 
-        def transcribe(self, audio, language=None):
-            calls.setdefault("asr", []).append((audio[1], len(audio[0]), language))
-            calls.setdefault("asr_tokens", []).append(self.max_new_tokens)
+        def eval(self):
+            return self
+
+        def generate(self, **kwargs):
+            max_tokens = kwargs.get("max_new_tokens")
+            calls.setdefault("asr_tokens", []).append(max_tokens)
             if calls.get("fail"):
                 raise RuntimeError("CUDA out of memory")
-            return [SimpleNamespace(language="English", text=" Hello, world. ")]
+            return FakeTensor()
 
-    class Aligner:
+    class AlignerModel:
+        def __init__(self, source, kwargs):
+            self.source = source
+            self.device = "cuda:0"
+            self.dtype = "bf16"
+            self.config = SimpleNamespace(timestamp_token_id=42)
+
         @classmethod
         def from_pretrained(cls, source, **kwargs):
             calls["align_load"] = (source, kwargs)
-            return cls()
+            return cls(source, kwargs)
 
-        def align(self, audio, text, language):
-            calls.setdefault("align", []).append((audio[1], text, language))
-            if calls.get("fail"):
-                raise RuntimeError("alignment failed")
-            return [[item("Hello", 0.1, 0.4), item("world", 0.5, 0.9)]]
+        def eval(self):
+            return self
+
+        def __call__(self, **kwargs):
+            return SimpleNamespace(logits=None)
 
     class MLXModel:
         def __init__(self, source):
@@ -514,11 +569,14 @@ def engines(monkeypatch):
                 return iter([item("你", 0.0, 0.2), item("好", 0.2, 0.4)])
             return SimpleNamespace(text=" 你好。 ", language=["Chinese", "Chinese"])
 
-    qwen_asr = types.ModuleType("qwen_asr")
-    qwen_asr.Qwen3ASRModel, qwen_asr.Qwen3ForcedAligner = ASRModel, Aligner
+    transformers = types.ModuleType("transformers")
+    transformers.AutoProcessor = type("AutoProcessor", (), {
+        "from_pretrained": classmethod(lambda cls, source, **kw: FakeProcessor(source))})
+    transformers.AutoModelForMultimodalLM = ASRModel
+    transformers.AutoModelForTokenClassification = AlignerModel
     utils = types.ModuleType("mlx_audio.stt.utils")
     utils.load_model = MLXModel
-    monkeypatch.setitem(sys.modules, "qwen_asr", qwen_asr)
+    monkeypatch.setitem(sys.modules, "transformers", transformers)
     monkeypatch.setitem(sys.modules, "mlx_audio", types.ModuleType("mlx_audio"))
     monkeypatch.setitem(sys.modules, "mlx_audio.stt", types.ModuleType("mlx_audio.stt"))
     monkeypatch.setitem(sys.modules, "mlx_audio.stt.utils", utils)
@@ -529,14 +587,13 @@ CLIPS = [np.zeros(SR, dtype=np.float32), np.zeros(SR // 10, dtype=np.float32)]
 
 
 def test_transformers_transcribe_call_convention(engines):
-    assert qwen._transcribe("transformers", "Qwen/Qwen3-ASR-1.7B", CLIPS, None) == \
+    assert qwen._transcribe("transformers", "Qwen/Qwen3-ASR-1.7B-hf", CLIPS, None) == \
         [("English", "Hello, world."), ("English", "Hello, world.")]
     source, kwargs = engines["asr_load"]
-    assert source == "src:Qwen/Qwen3-ASR-1.7B"
-    assert kwargs == {"dtype": "bf16", "device_map": "cuda:0", "max_inference_batch_size": 1,
-                      "max_new_tokens": qwen.MAX_NEW_TOKENS}
-    assert engines["asr"] == [(SR, SR, None), (SR, SR // 10, None)]
-    # Budget by clip length (qwen-asr reads model.max_new_tokens on every generate).
+    assert source == "src:Qwen/Qwen3-ASR-1.7B-hf"
+    assert kwargs == {"dtype": "bf16", "device_map": "cuda:0"}
+    assert len(engines["asr"]) == 2
+    # Budget by clip length (native generate uses max_new_tokens per clip).
     assert engines["asr_tokens"] == [qwen.token_budget(1), qwen.token_budget(0.1)]
     # A forced language is passed through and reported as-is.
     assert qwen._transcribe("transformers", "r", CLIPS[:1], "Japanese") == [("Japanese", "Hello, world.")]
@@ -556,10 +613,10 @@ def test_mlx_transcribe_call_convention(engines):
 
 def test_align_call_conventions(engines):
     jobs = [(CLIPS[0], "Hello, world.", "English")]
-    assert qwen._align("transformers", "Qwen/Qwen3-ForcedAligner-0.6B", jobs) == \
+    assert qwen._align("transformers", "Qwen/Qwen3-ForcedAligner-0.6B-hf", jobs) == \
         [[("Hello", 0.1, 0.4), ("world", 0.5, 0.9)]]
-    assert engines["align_load"] == ("src:Qwen/Qwen3-ForcedAligner-0.6B", {"dtype": "bf16", "device_map": "cuda:0"})
-    assert engines["align"] == [(SR, "Hello, world.", "English")]
+    assert engines["align_load"] == ("src:Qwen/Qwen3-ForcedAligner-0.6B-hf", {"dtype": "bf16", "device_map": "cuda:0"})
+    assert engines["align"] == [("Hello, world.", "English")]
     assert qwen._align("mlx", "m", [(CLIPS[0], "你好。", "Chinese")]) == [[("你", 0.0, 0.2), ("好", 0.2, 0.4)]]
     assert engines["mlx"][-1][2] == {"text": "你好。", "language": "Chinese"}
 

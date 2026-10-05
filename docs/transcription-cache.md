@@ -10,7 +10,7 @@ is retained because later alignment and dubbing stages still require those files
 Identity includes the source file MD5, recognition language, runtime, model setting,
 local backend (`qwen` or `whisperx`), Qwen3-ASR model size (`1.7b`/`0.6b`) and the
 resolved Qwen engine (`mlx` or `transformers`, never `auto`), vocal separation,
-installed ASR package versions (whisperx, faster-whisper, qwen-asr, mlx-audio,
+installed ASR package versions (whisperx, faster-whisper, mlx-audio, transformers, omnivoice,
 transformers, demucs) and a cache schema version. WhisperX and Qwen results, the two
 Qwen sizes and the two engines are therefore never reused for each other. Adding
 these fields changed every key once, so entries written before the Qwen migration

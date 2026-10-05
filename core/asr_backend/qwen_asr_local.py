@@ -7,7 +7,9 @@ process_transcription, the ASR cache and dubbing are unchanged.
 
 Engines:
 - mlx: Apple Silicon via mlx-audio (8-bit mlx-community weights).
-- transformers: Windows / Linux / other Macs via the official qwen-asr package.
+- transformers: Windows / Linux / other Macs via native transformers
+  Qwen3-ASR-hf checkpoints (>=5.13), sharing the Transformers 5 stack with
+  mandatory local TTS OmniVoice.
 Heavy libraries are imported lazily so this module imports without them.
 """
 
@@ -29,8 +31,8 @@ from core.utils import load_key, load_key_or, except_handler, check_cancel
 from core.asr_backend.speech_edges import trim_speech_windows
 
 SAMPLE_RATE = 16000
-# Qwen3-ForcedAligner accepts at most 180 s per call (qwen_asr MAX_FORCE_ALIGN_INPUT_SECONDS).
-# ASR uses the same windows so each transcript aligns against exactly its own audio.
+# Qwen3-ForcedAligner accepts at most 300 s per call (5 minutes); VideoLingo keeps
+# the conservative 180 s windows so each transcript aligns against exactly its own audio.
 WINDOW_SECONDS = 180
 # Cut each window at the quietest 100 ms inside its last 30 s.
 CUT_SEARCH_SECONDS = 30
@@ -86,9 +88,9 @@ MODELS = {
         "aligner": "mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
     },
     "transformers": {
-        "1.7b": "Qwen/Qwen3-ASR-1.7B",
-        "0.6b": "Qwen/Qwen3-ASR-0.6B",
-        "aligner": "Qwen/Qwen3-ForcedAligner-0.6B",
+        "1.7b": "Qwen/Qwen3-ASR-1.7B-hf",
+        "0.6b": "Qwen/Qwen3-ASR-0.6B-hf",
+        "aligner": "Qwen/Qwen3-ForcedAligner-0.6B-hf",
     },
 }
 
@@ -126,17 +128,18 @@ def model_size(requested=None):
 
 
 def resolve_engine(requested=None):
-    """auto -> MLX on Apple Silicon (qwen-asr only if it is what this environment has), else transformers."""
+    """auto -> MLX on Apple Silicon, else native transformers."""
     engine = str(requested or load_key_or("whisper.qwen_engine", "auto")).lower()
     if engine not in ("auto", "mlx", "transformers"):
         raise ValueError(f"whisper.qwen_engine must be 'auto', 'mlx' or 'transformers', got {engine!r}")
     if engine == "auto":
-        # Apple Silicon requirements install mlx-audio, not qwen-asr; point a broken install back to it.
-        mlx = _apple_silicon() and (_installed("mlx_audio") or not _installed("qwen_asr"))
+        # Apple Silicon requirements install mlx-audio for ASR; elsewhere use
+        # native transformers Qwen3-ASR-hf (shares Transformers 5 with OmniVoice).
+        mlx = _apple_silicon() and (_installed("mlx_audio") or not _installed("transformers"))
         engine = "mlx" if mlx else "transformers"
-    module = "mlx_audio" if engine == "mlx" else "qwen_asr"
+    module = "mlx_audio" if engine == "mlx" else "transformers"
     if not _installed(module):
-        package = "mlx-audio" if engine == "mlx" else "qwen-asr"
+        package = "mlx-audio" if engine == "mlx" else "transformers"
         raise ImportError(
             f"Qwen ASR engine '{engine}' needs the '{package}' package. Rerun `python installer.py`. "
             "To use WhisperX instead, follow docs/pages/docs/whisperx-manual.en-US.md "
@@ -591,18 +594,66 @@ def asr_session(engine, repo_id):
                 detected = language or ",".join(dict.fromkeys(l for l in (out.language or []) if l))
                 return detected, out.text.strip()
         else:
-            from qwen_asr import Qwen3ASRModel
+            import torch
+            from transformers import AutoModelForMultimodalLM, AutoProcessor
             device, dtype = _torch_device()
             rprint(f"[cyan]🎮 Qwen3-ASR device:[/cyan] {device}, [cyan]dtype:[/cyan] {dtype}")
-            model = Qwen3ASRModel.from_pretrained(source, dtype=dtype, device_map=device,
-                                                  max_inference_batch_size=1, max_new_tokens=MAX_NEW_TOKENS)
+            processor = AutoProcessor.from_pretrained(source)
+            model = AutoModelForMultimodalLM.from_pretrained(
+                source, dtype=dtype, device_map=device)
+            model.eval()
 
             def run(clip, language, max_tokens=None):
                 check_cancel()
-                # qwen-asr reads this attribute for every generate() call.
-                model.max_new_tokens = max_tokens or token_budget(len(clip) / SAMPLE_RATE)
-                out = model.transcribe(audio=(clip, SAMPLE_RATE), language=language)[0]
-                return language or out.language, out.text.strip()
+                import tempfile
+                from pathlib import Path as _Path
+                # Native processor accepts file paths/URLs; write the 16 kHz
+                # float32 clip to a temp WAV so numpy handling is version-proof.
+                tmp = None
+                try:
+                    import soundfile as sf
+                    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                    tmp.close()
+                    sf.write(tmp.name, clip, SAMPLE_RATE)
+                    audio_arg = tmp.name
+                except Exception:
+                    # soundfile missing or write failed: fall back to stdlib wave
+                    # (int16 conversion, same sample rate).
+                    import wave
+                    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                    tmp.close()
+                    pcm = (clip * 32767.0).clip(-32768, 32767).astype("int16")
+                    with wave.open(tmp.name, "wb") as stream:
+                        stream.setnchannels(1)
+                        stream.setsampwidth(2)
+                        stream.setframerate(SAMPLE_RATE)
+                        stream.writeframes(pcm.tobytes())
+                    audio_arg = tmp.name
+                try:
+                    kwargs = {}
+                    if language:
+                        kwargs["language"] = language
+                    inputs = processor.apply_transcription_request(audio=audio_arg, **kwargs)
+                    inputs = inputs.to(model.device, model.dtype)
+                    with torch.inference_mode():
+                        output_ids = model.generate(
+                            **inputs,
+                            max_new_tokens=max_tokens or token_budget(len(clip) / SAMPLE_RATE),
+                        )
+                    generated = output_ids[:, inputs["input_ids"].shape[1]:]
+                    parsed = processor.decode(generated, return_format="parsed")[0]
+                    if isinstance(parsed, dict):
+                        detected = language or parsed.get("language")
+                        text = (parsed.get("transcription") or "").strip()
+                    else:
+                        detected, text = language, str(parsed).strip()
+                    return detected, text
+                finally:
+                    try:
+                        if tmp is not None:
+                            _Path(tmp.name).unlink(missing_ok=True)
+                    except Exception:
+                        pass
         yield run
     finally:
         # Release the model even when a window fails, so a retry does not start out of memory.
@@ -626,14 +677,54 @@ def _align(engine, repo_id, jobs):
             aligner = load_model(source)
             align = lambda clip, text, lang: aligner.generate(clip, text=text, language=lang)
         else:
-            from qwen_asr import Qwen3ForcedAligner
+            import torch
+            from transformers import AutoModelForTokenClassification, AutoProcessor
             device, dtype = _torch_device()
-            aligner = Qwen3ForcedAligner.from_pretrained(source, dtype=dtype, device_map=device)
-            align = lambda clip, text, lang: aligner.align(audio=(clip, SAMPLE_RATE), text=text, language=lang)[0]
+            align_processor = AutoProcessor.from_pretrained(source)
+            aligner = AutoModelForTokenClassification.from_pretrained(
+                source, dtype=dtype, device_map=device)
+            aligner.eval()
+
+            def align(clip, text, lang):
+                import tempfile
+                from pathlib import Path as _Path
+                tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                tmp.close()
+                try:
+                    try:
+                        import soundfile as sf
+                        sf.write(tmp.name, clip, SAMPLE_RATE)
+                    except Exception:
+                        import wave
+                        pcm = (clip * 32767.0).clip(-32768, 32767).astype("int16")
+                        with wave.open(tmp.name, "wb") as stream:
+                            stream.setnchannels(1)
+                            stream.setsampwidth(2)
+                            stream.setframerate(SAMPLE_RATE)
+                            stream.writeframes(pcm.tobytes())
+                    align_inputs, word_lists = align_processor.prepare_forced_aligner_inputs(
+                        audio=tmp.name, transcript=text, language=lang)
+                    align_inputs = align_inputs.to(aligner.device, aligner.dtype)
+                    with torch.inference_mode():
+                        outputs = aligner(**align_inputs)
+                    stamps = align_processor.decode_forced_alignment(
+                        logits=outputs.logits,
+                        input_ids=align_inputs["input_ids"],
+                        word_lists=word_lists,
+                        timestamp_token_id=aligner.config.timestamp_token_id)[0]
+                    return stamps
+                finally:
+                    try:
+                        _Path(tmp.name).unlink(missing_ok=True)
+                    except Exception:
+                        pass
         for clip, text, lang in jobs:
             check_cancel()
             result = align(clip, text, lang)
-            results.append([(item.text, item.start_time, item.end_time) for item in result])
+            results.append([(item["text"] if isinstance(item, dict) else item.text,
+                             item["start_time"] if isinstance(item, dict) else item.start_time,
+                             item["end_time"] if isinstance(item, dict) else item.end_time)
+                            for item in result])
     finally:
         align = None  # the lambda holds a reference to the aligner
         del aligner

@@ -10,8 +10,10 @@ packages (Demucs, spaCy model downloads) warn instead of breaking the whole
 installation.
 
 The default local ASR is Qwen3-ASR + Qwen3-ForcedAligner, installed from
-requirements.txt (mlx-audio on Apple Silicon, qwen-asr elsewhere). This installer
-only installs Qwen. It does not install WhisperX, prompt for it, or accept a flag
+requirements.txt (mlx-audio on Apple Silicon, native transformers Qwen3-ASR-hf
+checkpoints elsewhere). The default local TTS OmniVoice is mandatory on
+Windows/Linux/Intel Mac and shares the Transformers 5 stack. This installer
+only installs Qwen + OmniVoice. It does not install WhisperX, prompt for it, or accept a flag
 for it. To use WhisperX, follow docs/pages/docs/whisperx-manual.*.md and install
 the extra packages yourself. On Apple Silicon, a rerun removes a leftover WhisperX
 stack from the default environment (it cannot share huggingface-hub with MLX) and
@@ -139,7 +141,8 @@ def save_state() -> None:
         "torch": package_version("torch"),
         "torchaudio": package_version("torchaudio"),
         "spacy": package_version("spacy"),
-        "qwen-asr": package_version("qwen-asr"),
+        "transformers": package_version("transformers"),
+        "omnivoice": package_version("omnivoice"),
         "mlx-audio": package_version("mlx-audio"),
         "whisperx": package_version("whisperx"),
         "demucs": package_version("demucs"),
@@ -182,7 +185,12 @@ def torch_versions() -> tuple[str, str]:
 
 def qwen_asr_package() -> str:
     """Package providing the default Qwen3-ASR backend on this platform."""
-    return "mlx-audio" if apple_silicon() else "qwen-asr"
+    return "mlx-audio" if apple_silicon() else "transformers"
+
+
+def omnivoice_package() -> str:
+    """Mandatory local TTS package on Windows/Linux/Intel Mac; optional on Apple Silicon."""
+    return "omnivoice"
 
 
 def unsupported_platform() -> str | None:
@@ -269,6 +277,26 @@ def remove_whisperx_for_mlx() -> None:
         run([sys.executable, "-m", "pip", "uninstall", "-y", *removable])
 
 
+def remove_legacy_qwen_asr() -> None:
+    """Drop qwen-asr 0.0.6 on Windows/Linux/Intel Mac before installing the native stack.
+
+    qwen-asr pins transformers==4.57.6, which cannot coexist with mandatory
+    OmniVoice (transformers>=5.3) and native Qwen3-ASR-hf (transformers>=5.13).
+    """
+    if apple_silicon():
+        return
+    if package_version("qwen-asr") is None:
+        return
+    kept = required_by_other_packages(["qwen-asr"])
+    if "qwen-asr" in kept:
+        print("  Keeping qwen-asr (required by other installed packages); "
+              "OmniVoice + native Qwen may conflict.")
+        return
+    print("  Removing legacy qwen-asr (pins transformers 4) for mandatory OmniVoice + "
+          "native transformers Qwen3-ASR-hf (transformers>=5.13).")
+    run([sys.executable, "-m", "pip", "uninstall", "-y", "qwen-asr"])
+
+
 def detect_nvidia_gpu() -> bool:
     if platform.system() == "Darwin":
         return False
@@ -349,6 +377,7 @@ def install_torch(force: bool = False, backend: str = "auto") -> None:
 def install_base_requirements(force: bool = False, upgrade: bool = False) -> None:
     print("\n[4/6] Install base requirements")
     remove_whisperx_for_mlx()
+    remove_legacy_qwen_asr()
     state = load_state()
     current_hash = requirements_hash()
     previous_hash = state.get("requirements_hash")
@@ -513,14 +542,24 @@ def health_check(quiet: bool = False, require_demucs: bool = False, check_state:
         "torchaudio": torch_version,
         "torchvision": vision_version,
         "spacy": "3.8.",
+        "transformers": "5.",
         qwen_asr_package(): None,
     }
+    # Mandatory local TTS on Windows/Linux/Intel Mac shares the Transformers 5 stack.
+    if not apple_silicon():
+        required["omnivoice"] = None
     for package, prefix in required.items():
         version = package_version(package)
         if version is None:
             errors.append(f"missing package: {package}")
         elif prefix and not version.split("+")[0].startswith(prefix):
             errors.append(f"{package} version {version} does not match expected {prefix}*")
+    # Legacy qwen-asr package pins transformers==4.57.6 and cannot coexist with the
+    # mandatory OmniVoice + native transformers Qwen3-ASR-hf stack (transformers>=5.13).
+    if not apple_silicon() and package_version("qwen-asr") is not None:
+        errors.append("qwen-asr is installed but conflicts with mandatory omnivoice "
+                      "(transformers 4 vs >=5.13); rerun installer.py to migrate to native "
+                      "transformers Qwen3-ASR-hf. The installer will not install qwen-asr again.")
     if require_demucs and package_version("demucs") is None:
         errors.append("missing optional package required by flag: demucs")
     elif package_version("demucs") is None:
@@ -563,7 +602,7 @@ def health_check(quiet: bool = False, require_demucs: bool = False, check_state:
             errors.append(f"WhisperX audio runtime check failed: {exc}")
     if not quiet:
         print("\nEnvironment check")
-        for package in ["streamlit", "torch", "torchaudio", "spacy", qwen_asr_package(), "demucs"]:
+        for package in ["streamlit", "torch", "torchaudio", "spacy", qwen_asr_package(), "omnivoice", "demucs"]:
             print(f"  {package}: {package_version(package) or 'missing'}")
         # WhisperX is not part of this install. Mention it only when a manual install is present.
         if package_version("whisperx"):

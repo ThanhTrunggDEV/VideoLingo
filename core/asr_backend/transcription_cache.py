@@ -14,7 +14,9 @@ CACHE_DIR = Path(".cache/asr")
 # 2: Demucs stems are decoded/encoded with FFmpeg and no longer start ~60 ms late.
 # 3: Qwen alignment preserves original Unicode characters after token normalization.
 # 4: Qwen windows exclude non-speech edges before transcription and alignment.
-SCHEMA = 4
+# 5: Qwen Win/Linux moved from qwen-asr package to native transformers -hf
+#    checkpoints (shares Transformers 5 with mandatory OmniVoice).
+SCHEMA = 5
 
 
 def cache_key(media_file, whisper, demucs):
@@ -38,7 +40,7 @@ def cache_key(media_file, whisper, demucs):
         }
         return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     packages = {}
-    for name in ("whisperx", "faster-whisper", "qwen-asr", "mlx-audio", "transformers", "demucs", "silero-vad"):
+    for name in ("whisperx", "faster-whisper", "mlx-audio", "transformers", "omnivoice", "demucs", "silero-vad"):
         try:
             packages[name] = version(name)
         except PackageNotFoundError:

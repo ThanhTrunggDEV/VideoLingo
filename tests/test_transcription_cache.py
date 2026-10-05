@@ -76,14 +76,14 @@ class TranscriptionCacheTests(unittest.TestCase):
         )
 
     def test_identity_tracks_asr_package_versions(self):
-        versions = {"qwen-asr": "0.0.6", "transformers": "4.57.6"}
+        versions = {"transformers": "5.13.0", "omnivoice": "0.2.1"}
         def version(name):
             if name not in versions:
                 raise cache.PackageNotFoundError(name)
             return versions[name]
         with patch.object(cache, "version", side_effect=version):
             key = cache.cache_key(self.media, self.whisper, False)
-            for name in ("qwen-asr", "mlx-audio", "transformers"):
+            for name in ("mlx-audio", "transformers", "omnivoice"):
                 with patch.dict(versions, {name: "9.9.9"}):
                     self.assertNotEqual(key, cache.cache_key(self.media, self.whisper, False))
 

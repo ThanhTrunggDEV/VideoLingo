@@ -42,7 +42,10 @@ def test_noto_lookup_uses_font_family(monkeypatch):
 def test_requirements_exclude_staged_torch():
     names = {installer.requirement_name(r) for r in installer.read_base_requirements()}
     assert not names.intersection({'torch', 'torchaudio', 'torchvision'})
-    assert {'qwen-asr', 'mlx-audio', 'spacy'} <= names
+    assert {'transformers', 'mlx-audio', 'omnivoice', 'spacy'} <= names
+    # qwen-asr pins transformers 4 and conflicts with mandatory omnivoice (>=5.3);
+    # Win/Linux now use native transformers Qwen3-ASR-hf instead.
+    assert 'qwen-asr' not in names
     # WhisperX is a manual install, not an installer option, and is documented separately.
     assert not names.intersection({'whisperx', 'torchcodec', 'pyannote-audio', 'ctranslate2'})
     assert not names.intersection({'moviepy', 'replicate', 'resampy'})
@@ -62,17 +65,26 @@ def _platform_requirements(system, machine):
 
 @pytest.mark.parametrize('system,machine,engine,transformers_major', [
     ('Darwin', 'arm64', 'mlx-audio', '5'),
-    ('Darwin', 'x86_64', 'qwen-asr', '4'),
-    ('Linux', 'x86_64', 'qwen-asr', '4'),
-    ('Windows', 'AMD64', 'qwen-asr', '4'),
+    ('Darwin', 'x86_64', 'transformers', '5'),
+    ('Linux', 'x86_64', 'transformers', '5'),
+    ('Windows', 'AMD64', 'transformers', '5'),
 ])
 def test_qwen_asr_requirements_follow_platform(monkeypatch, system, machine, engine, transformers_major):
     reqs = _platform_requirements(system, machine)
-    other = {'mlx-audio', 'qwen-asr'} - {engine}
-    assert engine in reqs and not other.intersection(reqs)
+    other = {'mlx-audio', 'transformers'} - {engine}
+    # Both engines share Transformers 5 (MLX needs hub>=1, native Qwen-hf needs >=5.13,
+    # mandatory OmniVoice needs >=5.3).
+    assert engine in reqs
+    if engine == 'mlx-audio':
+        assert 'transformers' in reqs
+    else:
+        assert 'mlx-audio' not in reqs
     assert len(reqs['transformers']) == len(reqs['huggingface-hub']) == 1
     assert reqs['transformers'][0].specifier.contains(transformers_major + '.99')
-    assert ('nagisa' in reqs) == (engine == 'mlx-audio')
+    assert ('nagisa' in reqs)
+    # Mandatory OmniVoice on Windows/Linux/Intel Mac shares the Transformers 5 stack.
+    is_arm_mac = (system == 'Darwin' and machine == 'arm64')
+    assert ('omnivoice' in reqs) == (not is_arm_mac)
     monkeypatch.setattr(installer.platform, 'system', lambda: system)
     monkeypatch.setattr(installer.platform, 'machine', lambda: machine)
     assert installer.qwen_asr_package() == engine

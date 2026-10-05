@@ -56,10 +56,13 @@ def main():
             warnings.append("No NVIDIA GPU: local Qwen3-ASR runs on CPU and is slow (0.6B or ElevenLabs is faster).")
             log(f"torch: {torch_ver} (CPU only)")
 
-    # Default local ASR is Qwen3-ASR (MLX on Apple Silicon). WhisperX is a separate manual install.
-    qwen = "mlx_audio" if apple_silicon else "qwen_asr"
+    # Default local ASR is Qwen3-ASR (MLX on Apple Silicon, native transformers elsewhere).
+    # WhisperX is a separate manual install. Mandatory local TTS OmniVoice shares Transformers 5.
+    qwen = "mlx_audio" if apple_silicon else "transformers"
     if not check_package(qwen):
         warnings.append(f"{qwen} not installed. Local Qwen ASR will fail. Run: python installer.py")
+    if not apple_silicon and not check_package("omnivoice"):
+        warnings.append("omnivoice not installed. Local OmniVoice TTS will fail. Run: python installer.py")
 
     # Port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

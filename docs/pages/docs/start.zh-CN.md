@@ -164,9 +164,9 @@ uv run start.py
 | 平台 | 引擎 | 模型 | 说明 |
 |:-----|:-----|:-----|:-----|
 | Apple Silicon Mac | MLX（mlx-audio） | `mlx-community/Qwen3-ASR-{1.7B,0.6B}-8bit`、`mlx-community/Qwen3-ForcedAligner-0.6B-8bit` | 需要 **macOS 14 或更高**（mlx 只提供 macOS ≥14 的 arm64 包） |
-| Windows / Linux + NVIDIA | 官方 qwen-asr（transformers） | `Qwen/Qwen3-ASR-{1.7B,0.6B}`、`Qwen/Qwen3-ForcedAligner-0.6B` | `cuda:0`，显卡支持 bf16 时用 bf16，否则 fp16 |
+| Windows / Linux + NVIDIA | 原生 transformers（Qwen3-ASR-hf） | `Qwen/Qwen3-ASR-{1.7B,0.6B}-hf`、`Qwen/Qwen3-ForcedAligner-0.6B-hf` | `cuda:0`，显卡支持 bf16 时用 bf16，否则 fp16 |
 | Windows / Linux 无 NVIDIA | 同上 | 同上 | CPU fp32，可以运行但**很慢**，建议选 0.6B 或改用 ElevenLabs |
-| Intel Mac | 官方 qwen-asr（transformers） | `Qwen/Qwen3-ASR-{1.7B,0.6B}`、`Qwen/Qwen3-ForcedAligner-0.6B` | CPU fp32，自动安装 PyTorch 2.2.2；识别较慢，建议选 0.6B。可选的人声分离暂不自动安装 |
+| Intel Mac | 原生 transformers（Qwen3-ASR-hf） | `Qwen/Qwen3-ASR-{1.7B,0.6B}-hf`、`Qwen/Qwen3-ForcedAligner-0.6B-hf` | CPU fp32，自动安装 PyTorch 2.2.2；识别较慢，建议选 0.6B。可选的人声分离暂不自动安装 |
 
 - 在 Apple Silicon 上，默认依赖只安装 mlx-audio，不安装 qwen-asr；要用 `qwen_engine: transformers` 需要另建环境。macOS 低于 14 时安装器会直接报错退出。旧环境里如果装过 WhisperX，重跑 `installer.py` 时会先卸载WhisperX 整套依赖（whisperx、torchcodec、faster-whisper、ctranslate2、pyannote-*），它们与 MLX 依赖冲突。
 - **模型下载**：首次识别时从 Hugging Face 下载，1.7B 加对齐模型共数 GB。可用 `HF_ENDPOINT` 指定镜像。如果 `_model_cache/<仓库名末段>/config.json` 存在（例如 `_model_cache/Qwen3-ASR-1.7B`），会直接使用这份本地模型。
@@ -205,7 +205,7 @@ Excel 批处理已由本地 HTTP API 替代，与 Streamlit 共用处理流程�
 
 2. **'Retry Failed', 'SSL', 'Connection', 'Timeout'**: 通常是网络问题。解决方案：中国大陆用户请切换网络节点重试。
 
-3. **`Qwen ASR engine '...' needs the 'qwen-asr' package`（或 `mlx-audio`）**：当前缺少识别包。关闭 VideoLingo 后重新启动即可修复：Windows 双击 `OneKeyStart.bat`，源码安装运行 `uv run start.py`。Apple Silicon 上如果手动设置了 `qwen_engine: transformers`，请改回 `auto`。
+3. **`Qwen ASR engine '...' needs the 'transformers' package`（或 `mlx-audio`）**：当前缺少识别包。关闭 VideoLingo 后重新启动即可修复：Windows 双击 `OneKeyStart.bat`，源码安装运行 `uv run start.py`。Apple Silicon 上如果手动设置了 `qwen_engine: transformers`，请改回 `auto`。
 
 4. **`Qwen3-ASR could not detect the language`** 或 **`... is still degenerate after retrying`**：`Auto` 模式下没能识别出语言，或识别结果退化（循环重复、内容过少）。在侧栏明确选择识别语言后重试，也可以换另一个模型大小。
 

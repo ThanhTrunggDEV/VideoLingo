@@ -30,20 +30,30 @@ edge-tts>=7.2.8,<8
 
 # Default local ASR: Qwen3-ASR + Qwen3-ForcedAligner (core/asr_backend/qwen_asr_local.py).
 # Apple Silicon uses MLX (mlx-audio); every mlx-audio release with Qwen3-ASR needs
-# Transformers 5 / huggingface-hub 1. Windows and Linux use the official qwen-asr
-# package, which pins Transformers 4.57.6 (hub <1). Intel Macs use its CPU path
-# with the last available macOS x86_64 PyTorch wheels. WhisperX is not an
+# Transformers 5 / huggingface-hub 1. Windows and Linux use native transformers
+# Qwen3-ASR-hf checkpoints (>=5.13), which share the Transformers 5 stack required
+# by mandatory local TTS OmniVoice (github.com/k2-fsa/OmniVoice). Intel Macs use
+# its CPU path with the last available macOS x86_64 PyTorch wheels. WhisperX is not an
 # installer option and is not listed here; see docs/pages/docs/whisperx-manual.*.md.
-qwen-asr==0.0.6; sys_platform != 'darwin' or platform_machine != 'arm64'
 # Bundled CPU VAD model protects Qwen alignment from non-speech intros.
 silero-vad>=6.2.3,<6.3
-transformers>=4.57.6,<5; sys_platform != 'darwin' or platform_machine != 'arm64'
-huggingface-hub>=0.36.2,<1; sys_platform != 'darwin' or platform_machine != 'arm64'
+transformers>=5.13,<6; sys_platform != 'darwin' or platform_machine != 'arm64'
+huggingface-hub>=1,<2; sys_platform != 'darwin' or platform_machine != 'arm64'
+# Native transformers Qwen3-ASR-hf needs these for device_map and audio I/O;
+# nagisa/soynlp are required by the native forced aligner for Japanese/Korean.
+accelerate>=1.12,<2; sys_platform != 'darwin' or platform_machine != 'arm64'
+soundfile>=0.12,<1; sys_platform != 'darwin' or platform_machine != 'arm64'
+nagisa==0.2.11; sys_platform != 'darwin' or platform_machine != 'arm64'
+soynlp==0.0.493; sys_platform != 'darwin' or platform_machine != 'arm64'
+# Mandatory local zero-shot TTS: OmniVoice (core/tts_backend/omnivoice_tts.py).
+# Needs Transformers >=5.3 (HiggsAudioV2TokenizerModel), satisfied by the
+# Transformers 5 stack above on Windows/Linux/Intel Mac.
+omnivoice>=0.2.1,<0.3; sys_platform != 'darwin' or platform_machine != 'arm64'
 mlx-audio>=0.5.5,<0.6; sys_platform == 'darwin' and platform_machine == 'arm64'
 transformers>=5.14,<6; sys_platform == 'darwin' and platform_machine == 'arm64'
 huggingface-hub>=1,<2; sys_platform == 'darwin' and platform_machine == 'arm64'
 # mlx-audio's forced aligner imports these lazily for Japanese/Korean but does not
-# declare them; same pins as qwen-asr 0.0.6.
+# declare them; native transformers forced aligner needs them too.
 nagisa==0.2.11; sys_platform == 'darwin' and platform_machine == 'arm64'
 soynlp==0.0.493; sys_platform == 'darwin' and platform_machine == 'arm64'
 torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'

@@ -194,9 +194,13 @@ def test_unspaced_numeric_tokens_stay_contiguous(tokens, expected):
 
 @pytest.mark.parametrize("text", ["2025年に行きます。", "今日は２０２６年です。", "①テストです。", "ｶﾞｯﾂです。"])
 def test_japanese_aligner_tokens_preserve_text(text):
-    pytest.importorskip("qwen_asr")
-    from qwen_asr.inference.qwen3_forced_aligner import Qwen3ForceAlignProcessor
+    # Native transformers stack has no Qwen3ForceAlignProcessor API; verify the
+    # word-reconstruction contract directly: aligner tokens are ordered
+    # subsequences with punctuation stripped, and attach_words must restore it.
     from core.asr_backend.qwen_asr_local import attach_words
-    tokens, _ = Qwen3ForceAlignProcessor().encode_timestamp(text, "Japanese")
+    import unicodedata
+    tokens = [c for c in unicodedata.normalize("NFKD", text) if c.isalnum() or c == "'"]
+    # Drop empties to mimic the aligner skipping punctuation-only tokens.
+    tokens = [t for t in tokens if t.strip()]
     aligned = attach_words(text, [(token, i, i + 1) for i, token in enumerate(tokens)])
     assert join_words([item["word"] for item in aligned], "") == text

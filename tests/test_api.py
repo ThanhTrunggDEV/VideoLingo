@@ -213,7 +213,7 @@ def test_serial_inputs_keep_distinct_archives(client):
 def test_api_import_does_not_load_ui_or_models():
     result = subprocess.run([
         sys.executable, "-c",
-        "import api, sys; assert not {'streamlit', 'torch', 'spacy', 'qwen_asr'} & sys.modules.keys()",
+        "import api, sys; assert not {'streamlit', 'torch', 'spacy', 'transformers'} & sys.modules.keys()",
     ], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 

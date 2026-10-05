@@ -52,7 +52,7 @@ see the [WhisperX guide](pages/docs/whisperx-manual.en-US.md#ffmpeg-runtime).
 | Platform | Packages | Transformers / Hub |
 | --- | --- | --- |
 | Apple Silicon (`darwin` + `arm64`) | `mlx-audio>=0.5.5,<0.6`, plus `nagisa==0.2.11` and `soynlp==0.0.493` | `transformers>=5.14,<6`, `huggingface-hub>=1,<2` |
-| Windows, Linux and Intel Mac | `qwen-asr==0.0.6` | `transformers>=4.57.6,<5`, `huggingface-hub>=0.36.2,<1` |
+| Windows, Linux and Intel Mac | native `transformers>=5.13,<6` Qwen3-ASR-hf + mandatory `omnivoice>=0.2.1,<0.3`, plus `accelerate`, `soundfile`, `nagisa==0.2.11`, `soynlp==0.0.493` | `transformers>=5.13,<6`, `huggingface-hub>=1,<2` |
 
 Qwen uses the bundled CPU model from `silero-vad>=6.2.3,<6.3` to trim non-speech
 edges from its existing windows before transcription and alignment. Both tracks
@@ -71,9 +71,11 @@ installer uninstalls the WhisperX stack (whisperx, torchcodec, faster-whisper, c
 because WhisperX 3.8's `huggingface-hub<1` conflicts with mlx-audio's `>=1`.
 
 Why the split: every mlx-audio release that includes Qwen3-ASR requires
-Transformers 5, and 0.4.2+ also requires huggingface-hub 1. qwen-asr 0.0.6 pins
-`transformers==4.57.6` and `accelerate==1.12.0` exactly (and pulls in gradio and
-flask), so Transformers stays on 4.x wherever qwen-asr is used. mlx only publishes
+Transformers 5, and 0.4.2+ also requires huggingface-hub 1. Mandatory OmniVoice
+needs `transformers>=5.3` (HiggsAudioV2TokenizerModel) and native Qwen3-ASR-hf
+needs `>=5.13`, so Windows/Linux/Intel Mac share Transformers 5 / hub 1.
+Legacy `qwen-asr 0.0.6` pinned `transformers==4.57.6` and cannot coexist, so the
+installer removes it before syncing. mlx only publishes
 macOS ≥14 arm64 wheels, so Apple Silicon needs macOS 14 or newer. mlx-audio's
 forced aligner imports nagisa (Japanese) and soynlp (Korean) lazily without
 declaring them, so they are listed explicitly with qwen-asr's pins.
