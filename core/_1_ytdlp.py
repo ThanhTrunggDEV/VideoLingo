@@ -46,6 +46,14 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
         'writethumbnail': True,
         'merge_output_format': 'mp4',
         'postprocessors': [{'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg'}],
+        # Large files often die mid-download ("X bytes read, Y more expected")
+        # when the server throttles or resets the connection: resume the
+        # partial file and retry with backoff instead of starting over.
+        'continuedl': True,
+        'retries': 10,
+        'fragment_retries': 10,
+        'retry_sleep': 'exp=1:10',
+        'socket_timeout': 30,
     }
 
     # None/missing inherits yt-dlp's system/environment proxy discovery.
