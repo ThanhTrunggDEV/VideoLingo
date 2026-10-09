@@ -11,6 +11,7 @@ from core.tts_backend.edge_tts import edge_tts
 from core.tts_backend.sf_cosyvoice2 import cosyvoice_tts_for_videolingo
 from core.tts_backend.custom_tts import custom_tts
 from core.tts_backend.omnivoice_tts import omnivoice_tts
+from core.tts_backend.vieneu_tts import vieneu_tts
 from core.prompts import get_correct_text_prompt
 from core.tts_backend._302_f5tts import f5_tts_for_videolingo
 from core.utils import *
@@ -64,6 +65,8 @@ def tts_main(text, save_as, number, task_df):
                 f5_tts_for_videolingo(text, save_as, number, task_df)
             elif TTS_METHOD == 'omnivoice':
                 omnivoice_tts(text, save_as, number, task_df)
+            elif TTS_METHOD == 'vieneu':
+                vieneu_tts(text, save_as, number, task_df)
                 
             # Check generated audio duration
             duration = get_audio_duration(save_as)

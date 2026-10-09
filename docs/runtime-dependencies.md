@@ -54,6 +54,10 @@ see the [WhisperX guide](pages/docs/whisperx-manual.en-US.md#ffmpeg-runtime).
 | Apple Silicon (`darwin` + `arm64`) | `mlx-audio>=0.5.5,<0.6`, plus `nagisa==0.2.11` and `soynlp==0.0.493` | `transformers>=5.14,<6`, `huggingface-hub>=1,<2` |
 | Windows, Linux and Intel Mac | native `transformers>=5.13,<6` Qwen3-ASR-hf + mandatory `omnivoice>=0.2.1,<0.3`, plus `accelerate`, `soundfile`, `nagisa==0.2.11`, `soynlp==0.0.493` | `transformers>=5.13,<6`, `huggingface-hub>=1,<2` |
 
+Local TTS `vieneu>=3.2,<4` (VieNeu-TTS v3 Turbo) installs on every platform;
+its base package is torch-free (ONNX Runtime) but needs the eSpeak NG system
+package at runtime. Voice models download from Hugging Face on first use.
+
 Qwen uses the bundled CPU model from `silero-vad>=6.2.3,<6.3` to trim non-speech
 edges from its existing windows before transcription and alignment. Both tracks
 keep identical sample boundaries and original time offsets. One second of padding

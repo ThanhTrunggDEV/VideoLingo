@@ -8,6 +8,7 @@ PROVIDERS = {
     "Microsoft Edge": ("edge_tts",),
     "Local service": ("gpt_sovits",),
     "OmniVoice": ("omnivoice",),
+    "VieNeu": ("vieneu",),
     "Custom provider": ("custom_tts",),
 }
 KEY_PATHS = {

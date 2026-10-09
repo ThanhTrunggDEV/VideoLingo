@@ -42,7 +42,7 @@ def test_noto_lookup_uses_font_family(monkeypatch):
 def test_requirements_exclude_staged_torch():
     names = {installer.requirement_name(r) for r in installer.read_base_requirements()}
     assert not names.intersection({'torch', 'torchaudio', 'torchvision'})
-    assert {'transformers', 'mlx-audio', 'omnivoice', 'spacy'} <= names
+    assert {'transformers', 'mlx-audio', 'omnivoice', 'vieneu', 'spacy'} <= names
     # qwen-asr pins transformers 4 and conflicts with mandatory omnivoice (>=5.3);
     # Win/Linux now use native transformers Qwen3-ASR-hf instead.
     assert 'qwen-asr' not in names
@@ -85,6 +85,8 @@ def test_qwen_asr_requirements_follow_platform(monkeypatch, system, machine, eng
     # Mandatory OmniVoice on Windows/Linux/Intel Mac shares the Transformers 5 stack.
     is_arm_mac = (system == 'Darwin' and machine == 'arm64')
     assert ('omnivoice' in reqs) == (not is_arm_mac)
+    # Torch-free VieNeu-TTS installs on every platform.
+    assert 'vieneu' in reqs
     monkeypatch.setattr(installer.platform, 'system', lambda: system)
     monkeypatch.setattr(installer.platform, 'machine', lambda: machine)
     assert installer.qwen_asr_package() == engine

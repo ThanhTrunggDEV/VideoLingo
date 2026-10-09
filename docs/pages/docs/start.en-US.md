@@ -31,6 +31,7 @@ VideoLingo provides multiple TTS integration methods. Here's a comparison (skip 
 | Edge TTS | Online service | No separate API key in this adapter | Requires network access | — | — |
 | 🗣️ GPT-SoVITS | Local | Best voice cloning | Only supports Chinese/English, requires local inference, complex setup | 🏆 | 🚫 |
 | 🗣️ OmniVoice | Local | Voice cloning, runs locally, no API key | Needs a local GPU for reasonable speed | — | — |
+| 🗣️ VieNeu-TTS | Local | Vietnamese voice cloning + 25 preset voices, runs locally, no API key | Best for Vietnamese; needs `pip install vieneu` and eSpeak NG | 🏆 | — |
 
 - For SiliconFlow FishTTS, get key from [SiliconFlow](https://cloud.siliconflow.cn/i/ttKDEsxE), note that cloning feature requires paid credits;
 - For OpenAI TTS, use [OpenLux](https://www.openlux.ai/register?aff=wKYu) with the same key as for the LLM. Another service with the speech endpoint of OpenAI works with `openai_tts.base_url` and `openai_tts.model` in `config.yaml`;

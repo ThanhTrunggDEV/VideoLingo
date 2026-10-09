@@ -73,6 +73,8 @@ def main():
         warnings.append(f"{qwen} not installed. Local Qwen ASR will fail. Run: python installer.py")
     if not apple_silicon and not check_package("omnivoice"):
         warnings.append("omnivoice not installed. Local OmniVoice TTS will fail. Run: python installer.py")
+    if not check_package("vieneu"):
+        warnings.append("vieneu not installed. Local VieNeu-TTS will fail. Run: python installer.py")
 
     # Port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

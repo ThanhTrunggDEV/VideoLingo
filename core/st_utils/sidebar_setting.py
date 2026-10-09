@@ -397,6 +397,7 @@ def page_setting():
             "sf_cosyvoice2": t("SiliconFlow CosyVoice2"),
             "f5tts": t("F5-TTS"),
             "omnivoice": t("OmniVoice"),
+            "vieneu": t("VieNeu-TTS"),
         }
         from core.st_utils.tts_settings import select_tts_method
         select_tts = select_tts_method(tts_method_labels)
@@ -497,19 +498,181 @@ def page_setting():
             refer_mode_options = {
                 "stable": t("Voice of the video"),
                 "dynamic": t("Refer_dynamic"),
+                "custom": t("Custom voice"),
             }
             current_mode = load_key_or("omnivoice.refer_mode", "stable")
+            if current_mode not in refer_mode_options:
+                current_mode = "stable"
             selected_mode = st.selectbox(
                 t("Mode Selection"),
                 options=list(refer_mode_options.keys()),
                 format_func=lambda x: refer_mode_options[x],
-                index=list(refer_mode_options.keys()).index(current_mode) if current_mode in refer_mode_options else 0,
+                index=list(refer_mode_options.keys()).index(current_mode),
             )
             if selected_mode != current_mode:
                 save_settings({"omnivoice.refer_mode": selected_mode})
                 st.rerun()
+            if selected_mode == "custom":
+                import os
+                from core.tts_backend.omnivoice_tts import save_custom_reference
+                saved_audio = str(load_key_or("omnivoice.custom_ref_audio", "") or "")
+                saved_text = str(load_key_or("omnivoice.custom_ref_text", "") or "")
+                if saved_audio and os.path.exists(saved_audio):
+                    st.caption(t("Custom reference in use: {file}").replace("{file}", saved_audio))
+                    try:
+                        st.audio(saved_audio)
+                    except Exception:
+                        pass
+                else:
+                    st.warning(t("Upload a 3-10 s clear clip of one speaker and enter its exact transcript."))
+                uploaded = st.file_uploader(
+                    t("Upload reference audio"),
+                    type=["wav", "mp3", "m4a", "flac", "ogg"],
+                    key="omnivoice_custom_ref",
+                    help=t("3-10 s of clear speech of one speaker. Used for the whole video."),
+                )
+                if uploaded is not None:
+                    upload_id = f"{uploaded.name}:{uploaded.size}"
+                    if st.session_state.get("_omnivoice_custom_upload_id") != upload_id:
+                        try:
+                            out_path, kept, original = save_custom_reference(uploaded.getvalue(), uploaded.name)
+                            save_settings({"omnivoice.custom_ref_audio": out_path})
+                            st.session_state["_omnivoice_custom_upload_id"] = upload_id
+                            if original > kept + 0.05:
+                                st.warning(t("Audio was {orig}s; only the first {kept}s are kept. The transcript must match exactly that kept part — listen to the preview to check.").replace("{orig}", f"{original:.1f}").replace("{kept}", f"{kept:.1f}"))
+                            else:
+                                st.success(t("Reference audio saved ({dur}s): {file}").replace("{dur}", f"{kept:.1f}").replace("{file}", out_path))
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"{t('Could not use this audio')}: {e}")
+                ref_text = st.text_area(
+                    t("Reference text (exact transcript)"),
+                    value=saved_text,
+                    placeholder=t("Type exactly what is said in the reference audio"),
+                    key="omnivoice_custom_ref_text",
+                )
+                if ref_text != saved_text:
+                    save_settings({"omnivoice.custom_ref_text": ref_text.strip()})
+                    st.rerun()
+                if saved_audio and os.path.exists(saved_audio):
+                    if st.button(t("Clear custom reference"), key="omnivoice_custom_clear"):
+                        save_settings({"omnivoice.custom_ref_audio": "", "omnivoice.custom_ref_text": ""})
+                        st.session_state.pop("_omnivoice_custom_upload_id", None)
+                        st.rerun()
             config_input(t("Device"), "omnivoice.device", help=t("auto (cuda:0/mps/cpu), cuda:0, mps, xpu, or cpu"))
             config_input(t("Diffusion steps"), "omnivoice.num_step", help=t("Diffusion steps: 32 for quality, 16 for speed"))
+
+        elif select_tts == "vieneu":
+            try:
+                import vieneu  # noqa: F401
+            except ImportError:
+                st.error(t("VieNeu-TTS runs locally and requires the `vieneu` package (docs.vieneu.io)."))
+                st.caption("Run: pip install vieneu")
+                st.caption(t("VieNeu-TTS also needs the eSpeak NG system package (Ubuntu/Debian: sudo apt install espeak-ng, macOS: brew install espeak)."))
+            from core.st_utils.tts_settings import save_settings
+            refer_mode_options = {
+                "preset": t("Preset voice"),
+                "stable": t("Voice of the video"),
+                "dynamic": t("Refer_dynamic"),
+                "custom": t("Custom voice"),
+            }
+            current_mode = str(load_key_or("vieneu.refer_mode", "stable") or "stable")
+            if current_mode not in refer_mode_options:
+                current_mode = "stable"
+            selected_mode = st.selectbox(
+                t("Mode Selection"),
+                options=list(refer_mode_options.keys()),
+                format_func=lambda x: refer_mode_options[x],
+                index=list(refer_mode_options.keys()).index(current_mode),
+                key="vieneu_refer_mode",
+            )
+            if selected_mode != current_mode:
+                save_settings({"vieneu.refer_mode": selected_mode})
+                st.rerun()
+            if selected_mode == "preset":
+                config_input(
+                    t("VieNeu preset voice"),
+                    "vieneu.voice",
+                    help=t("Built-in voice name, e.g. Minh Quân Pro, Adam, Trúc Ly. VieNeu-TTS has 25 preset voices."),
+                )
+            if selected_mode == "custom":
+                import os
+                from core.tts_backend.vieneu_tts import save_custom_reference
+                saved_audio = str(load_key_or("vieneu.custom_ref_audio", "") or "")
+                if saved_audio and os.path.exists(saved_audio):
+                    st.caption(t("Custom reference in use: {file}").replace("{file}", saved_audio))
+                    try:
+                        st.audio(saved_audio)
+                    except Exception:
+                        pass
+                else:
+                    st.warning(t("Upload a 3-8 s clear clip of one speaker. VieNeu-TTS v3 needs no transcript."))
+                uploaded = st.file_uploader(
+                    t("Upload reference audio"),
+                    type=["wav", "mp3", "m4a", "flac", "ogg"],
+                    key="vieneu_custom_ref",
+                    help=t("3-8 s of clear speech of one speaker. Used for the whole video."),
+                )
+                if uploaded is not None:
+                    upload_id = f"{uploaded.name}:{uploaded.size}"
+                    if st.session_state.get("_vieneu_custom_upload_id") != upload_id:
+                        try:
+                            out_path, kept, original = save_custom_reference(uploaded.getvalue(), uploaded.name)
+                            save_settings({"vieneu.custom_ref_audio": out_path})
+                            st.session_state["_vieneu_custom_upload_id"] = upload_id
+                            if original > kept + 0.05:
+                                st.warning(t("Audio was {orig}s; only the first {kept}s are kept.").replace("{orig}", f"{original:.1f}").replace("{kept}", f"{kept:.1f}"))
+                            else:
+                                st.success(t("Reference audio saved ({dur}s): {file}").replace("{dur}", f"{kept:.1f}").replace("{file}", out_path))
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"{t('Could not use this audio')}: {e}")
+                if saved_audio and os.path.exists(saved_audio):
+                    if st.button(t("Clear custom reference"), key="vieneu_custom_clear"):
+                        save_settings({"vieneu.custom_ref_audio": ""})
+                        st.session_state.pop("_vieneu_custom_upload_id", None)
+                        st.rerun()
+            if selected_mode in ("stable", "dynamic", "custom"):
+                denoise = st.toggle(
+                    t("Denoise reference audio"),
+                    value=bool(load_key_or("vieneu.denoise", True)),
+                    help=t("Clean the reference clip before cloning. Keep on unless the clip is already clean."),
+                )
+                if denoise != bool(load_key_or("vieneu.denoise", True)):
+                    save_settings({"vieneu.denoise": denoise})
+                    st.rerun()
+            engine_options = {
+                "standard": t("Standard (v3 Turbo, best quality)"),
+                "v3nano": t("Nano (faster, lower quality)"),
+            }
+            current_engine = str(load_key_or("vieneu.mode", "standard") or "standard")
+            if current_engine not in engine_options:
+                current_engine = "standard"
+            selected_engine = st.selectbox(
+                t("VieNeu engine"),
+                options=list(engine_options.keys()),
+                format_func=lambda x: engine_options[x],
+                index=list(engine_options.keys()).index(current_engine),
+                key="vieneu_engine",
+            )
+            if selected_engine != current_engine:
+                save_settings({"vieneu.mode": selected_engine})
+                st.rerun()
+            precision_options = {"fp32": "fp32", "int8": "int8"}
+            current_precision = str(load_key_or("vieneu.precision", "fp32") or "fp32")
+            if current_precision not in precision_options:
+                current_precision = "fp32"
+            selected_precision = st.selectbox(
+                t("VieNeu precision (CPU only)"),
+                options=list(precision_options.keys()),
+                index=list(precision_options.keys()).index(current_precision),
+                help=t("fp32 is the best quality. int8 is faster but needs a VNNI-capable CPU."),
+                key="vieneu_precision",
+            )
+            if selected_precision != current_precision:
+                save_settings({"vieneu.precision": selected_precision})
+                st.rerun()
+            config_input(t("VieNeu backend"), "vieneu.backend", help=t("auto (CUDA if available, else CPU) or onnx (force CPU)"))
 
 
 

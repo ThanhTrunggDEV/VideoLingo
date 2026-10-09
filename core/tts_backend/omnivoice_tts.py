@@ -10,6 +10,10 @@ from core.utils.models import _AUDIO_REFERS_DIR
 
 DEFAULT_MODEL = "k2-fsa/OmniVoice"
 SAMPLE_RATE = 24000
+# Custom uploaded reference lives outside output/ so Archive to 'history'
+# (which moves everything under output/) never deletes it.
+CUSTOM_REF_DIR = "custom_voice"
+CUSTOM_REF_FILE = "omnivoice_custom_ref.wav"
 # OmniVoice recommends 3-10 s of clear speech of one speaker as the reference
 MIN_REFERENCE_SECONDS = 3.0
 MAX_REFERENCE_SECONDS = 10.0
@@ -114,6 +118,69 @@ def _dynamic_reference(task_df, number):
     return path, str(text)
 
 
+def custom_reference_path():
+    """Persistent path of the uploaded custom reference (outside output/)."""
+    return os.path.join(CUSTOM_REF_DIR, CUSTOM_REF_FILE)
+
+
+def save_custom_reference(uploaded_bytes, filename=""):
+    """Save an uploaded clip as 24 kHz mono WAV for custom voice cloning.
+
+    Returns (path, kept_seconds, original_seconds). Trims to
+    MAX_REFERENCE_SECONDS so a long upload behaves like the stable reference;
+    callers must tell the user when trimming happened, because the transcript
+    has to match exactly the kept part.
+    """
+    os.makedirs(CUSTOM_REF_DIR, exist_ok=True)
+    tmp_path = os.path.join(CUSTOM_REF_DIR, f"_upload_tmp{os.path.splitext(filename or '')[1].lower() or '.wav'}")
+    with open(tmp_path, "wb") as f:
+        f.write(uploaded_bytes)
+    try:
+        clip = AudioSegment.from_file(tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+    duration = len(clip) / 1000.0
+    if duration < MIN_REFERENCE_SECONDS:
+        raise ValueError(
+            f"Reference audio is only {duration:.1f}s; please upload at least "
+            f"{MIN_REFERENCE_SECONDS:.0f}s of clear speech of one speaker."
+        )
+    if len(clip) > int(MAX_REFERENCE_SECONDS * 1000):
+        clip = clip[: int(MAX_REFERENCE_SECONDS * 1000)]
+    out_path = custom_reference_path()
+    clip.set_channels(1).set_frame_rate(SAMPLE_RATE).set_sample_width(2).export(out_path, format="wav")
+    return out_path, len(clip) / 1000.0, duration
+
+
+def _custom_reference(out_dir=None):
+    """The user-uploaded reference audio + its transcript, for the whole video."""
+    from core.utils import load_key_or
+    ref_audio = str(load_key_or("omnivoice.custom_ref_audio", "") or "")
+    ref_text = str(load_key_or("omnivoice.custom_ref_text", "") or "").strip()
+    if not ref_audio or not os.path.exists(ref_audio):
+        raise FileNotFoundError(
+            "Custom reference audio is not set. Select OmniVoice -> Custom voice, "
+            "upload a 3-10 s clip and enter its transcript."
+        )
+    if not ref_text:
+        raise ValueError(
+            "Custom reference text is empty. Enter the exact transcript of the uploaded audio."
+        )
+    # Guarantee the model always sees 24 kHz mono WAV, even when the path was
+    # edited by hand in config.yaml instead of via the sidebar upload.
+    try:
+        clip = AudioSegment.from_file(ref_audio)
+        normalized = clip.set_channels(1).set_frame_rate(SAMPLE_RATE).set_sample_width(2)
+        if len(normalized) != len(clip) or ref_audio.lower().endswith((".mp3", ".m4a", ".flac", ".ogg")):
+            normalized.export(ref_audio, format="wav")
+    except Exception:
+        pass
+    return ref_audio, ref_text
+
+
 def _voice_clone_kwargs(model, ref_audio, ref_text):
     """Encode the reference once and reuse it; fall back to re-passing the audio."""
     global _voice_prompt, _voice_prompt_key
@@ -140,6 +207,9 @@ def omnivoice_tts(text, save_as, number=None, task_df=None):
     if refer_mode == "dynamic":
         ref_audio, ref_text = _dynamic_reference(task_df, number)
         gen_kwargs = {"ref_audio": ref_audio, "ref_text": ref_text}
+    elif refer_mode == "custom":
+        ref_audio, ref_text = _custom_reference(out_dir)
+        gen_kwargs = _voice_clone_kwargs(model, ref_audio, ref_text)
     else:
         ref_audio, ref_text = _stable_reference(task_df, out_dir)
         gen_kwargs = _voice_clone_kwargs(model, ref_audio, ref_text)

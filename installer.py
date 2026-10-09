@@ -143,6 +143,7 @@ def save_state() -> None:
         "spacy": package_version("spacy"),
         "transformers": package_version("transformers"),
         "omnivoice": package_version("omnivoice"),
+        "vieneu": package_version("vieneu"),
         "mlx-audio": package_version("mlx-audio"),
         "whisperx": package_version("whisperx"),
         "demucs": package_version("demucs"),
@@ -548,6 +549,8 @@ def health_check(quiet: bool = False, require_demucs: bool = False, check_state:
     # Mandatory local TTS on Windows/Linux/Intel Mac shares the Transformers 5 stack.
     if not apple_silicon():
         required["omnivoice"] = None
+    # VieNeu-TTS is torch-free on CPU and installs on every platform.
+    required["vieneu"] = None
     for package, prefix in required.items():
         version = package_version(package)
         if version is None:
@@ -602,7 +605,7 @@ def health_check(quiet: bool = False, require_demucs: bool = False, check_state:
             errors.append(f"WhisperX audio runtime check failed: {exc}")
     if not quiet:
         print("\nEnvironment check")
-        for package in ["streamlit", "torch", "torchaudio", "spacy", qwen_asr_package(), "omnivoice", "demucs"]:
+        for package in ["streamlit", "torch", "torchaudio", "spacy", qwen_asr_package(), "omnivoice", "vieneu", "demucs"]:
             print(f"  {package}: {package_version(package) or 'missing'}")
         # WhisperX is not part of this install. Mention it only when a manual install is present.
         if package_version("whisperx"):
