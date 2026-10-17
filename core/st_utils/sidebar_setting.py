@@ -258,7 +258,7 @@ def page_setting():
                 update_key("whisper.backend", backend, add_missing=True)
                 st.rerun()
             if backend == "whisperx" and importlib.util.find_spec("whisperx") is None:
-                st.warning(t("WhisperX is not installed. Follow the manual page (docs/pages/docs/whisperx-manual.en-US.md) and install the extra packages yourself, or set whisper.backend to qwen."))
+                st.warning(t("WhisperX is not installed. Run `python installer.py --with-whisperx` (Windows/Linux), or set whisper.backend to qwen. See docs/pages/docs/whisperx-manual.en-US.md."))
         if runtime == "elevenlabs":
             config_input(t("ElevenLabs API"), "whisper.elevenlabs_api_key")
         elif runtime == "mai":

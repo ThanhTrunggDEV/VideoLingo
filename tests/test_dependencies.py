@@ -46,7 +46,8 @@ def test_requirements_exclude_staged_torch():
     # qwen-asr pins transformers 4 and conflicts with mandatory omnivoice (>=5.3);
     # Win/Linux now use native transformers Qwen3-ASR-hf instead.
     assert 'qwen-asr' not in names
-    # WhisperX is a manual install, not an installer option, and is documented separately.
+    # WhisperX is an opt-in backend installed via --with-whisperx, not part of
+    # requirements.txt, and is documented separately.
     assert not names.intersection({'whisperx', 'torchcodec', 'pyannote-audio', 'ctranslate2'})
     assert not names.intersection({'moviepy', 'replicate', 'resampy'})
 
@@ -224,13 +225,54 @@ def test_health_check_rejects_whisperx_next_to_mlx(monkeypatch, capsys):
     assert 'separate environment for WhisperX' in capsys.readouterr().out
 
 
-def test_installer_has_no_whisperx_stage():
+def test_installer_has_whisperx_auto_install_stage():
     source = (ROOT / 'installer.py').read_text(encoding='utf-8')
     setup = (ROOT / 'setup_env.py').read_text(encoding='utf-8')
-    assert not hasattr(installer, 'install_whisperx')
-    assert '--with-whisperx' not in source and '/7]' not in source
+    assert callable(installer.install_whisperx)
+    assert installer.WHISPERX_REQUIREMENTS[0].startswith('whisperx>=')
+    assert '--with-whisperx' in source and '/7]' in source
+    assert '--with-whisperx' in setup
     assert '--local-whisperx' not in source and '--local-whisperx' not in setup
     assert not (ROOT / 'requirements-whisperx.txt').exists()
+
+
+@pytest.mark.parametrize('required', [False, True])
+def test_whisperx_never_installs_into_mlx_environment(monkeypatch, capsys, required):
+    _apple_silicon(monkeypatch, True)
+    monkeypatch.setattr(installer, 'soft_pip_install', lambda *a, **k: pytest.fail('MLX env must not gain WhisperX'))
+    if required:
+        with pytest.raises(RuntimeError, match='separate environment'):
+            installer.install_whisperx(require=True)
+    else:
+        assert installer.install_whisperx() is False
+        assert 'separate environment' in capsys.readouterr().out
+
+
+def test_health_check_requires_whisperx_when_flagged(monkeypatch, capsys):
+    versions = _requirement_versions(('', '', ''), host=LINUX_HOST)
+    _patch_health_environment(monkeypatch, versions, gpu=False, host=LINUX_HOST)
+    assert installer.health_check(check_state=False, torch_backend='cpu', require_whisperx=True) == 1
+    assert 'required by WhisperX backend' in capsys.readouterr().out
+    versions.update({'whisperx': '3.8.6', 'ctranslate2': '4.5.0',
+                     'pyannote-audio': '4.0.4', 'torchcodec': '0.7.0'})
+    assert installer.health_check(check_state=False, torch_backend='cpu', require_whisperx=True) == 0
+
+
+def test_installer_parses_whisperx_flags(monkeypatch):
+    args = installer.build_parser().parse_args(['--with-whisperx'])
+    assert args.with_whisperx and not args.require_whisperx
+    args = installer.build_parser().parse_args(['--require-whisperx'])
+    assert args.require_whisperx
+    calls = {}
+
+    def fake_install_all(parsed):
+        calls['with'] = parsed.with_whisperx
+        calls['require'] = parsed.require_whisperx
+        return 0
+
+    monkeypatch.setattr(installer, 'install_all', fake_install_all)
+    assert installer.main(['--require-whisperx']) == 0
+    assert calls == {'with': True, 'require': True}
 
 
 def test_cpu_torch_repaired_on_gpu(monkeypatch):
@@ -300,6 +342,8 @@ def test_intel_mac_skips_optional_demucs_without_building_sphn(monkeypatch, caps
 # platform.system() and platform.machine() must agree, or an Apple Silicon or Linux host
 # would select a different Qwen engine than the test expects.
 HEALTH_HOST = {'sys_platform': 'darwin', 'platform_system': 'Darwin', 'platform_machine': 'x86_64', 'python_version': '3.12'}
+_WHISPERX_VERSIONS = {'whisperx': '3.8.6', 'ctranslate2': '4.5.0',
+                      'pyannote-audio': '4.0.4', 'torchcodec': '0.7.0'}
 APPLE_HOST = {**HEALTH_HOST, 'platform_machine': 'arm64'}
 LINUX_HOST = {**HEALTH_HOST, 'sys_platform': 'linux', 'platform_system': 'Linux'}
 
@@ -424,7 +468,7 @@ def test_whisperx_probe_follows_selected_backend(tmp_path, monkeypatch, runtime,
 
 @pytest.mark.parametrize('returncode', [0, 1])
 def test_whisperx_audio_probe_result(monkeypatch, capsys, returncode):
-    _patch_health_environment(monkeypatch, dict(_requirement_versions(('', '', '')), whisperx='3.8.6'), gpu=False)
+    _patch_health_environment(monkeypatch, dict(_requirement_versions(('', '', '')), **_WHISPERX_VERSIONS), gpu=False)
     monkeypatch.setattr(installer, 'whisperx_selected', lambda: True)
     calls = []
     def probe(cmd, **kwargs):
@@ -450,7 +494,7 @@ def test_whisperx_audio_probe_result(monkeypatch, capsys, returncode):
     subprocess.TimeoutExpired('torchcodec probe', 60),
 ])
 def test_whisperx_audio_probe_exception_is_an_error(monkeypatch, capsys, error):
-    _patch_health_environment(monkeypatch, dict(_requirement_versions(), whisperx='3.8.6'), gpu=False)
+    _patch_health_environment(monkeypatch, dict(_requirement_versions(), **_WHISPERX_VERSIONS), gpu=False)
     monkeypatch.setattr(installer, 'whisperx_selected', lambda: True)
     def probe(*args, **kwargs):
         raise error

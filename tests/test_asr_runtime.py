@@ -54,10 +54,9 @@ class RetiredRuntimeTests(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("docs/pages/docs/whisperx-manual.en-US.md", message)
         self.assertIn("whisper.backend to qwen", message)
-        self.assertNotIn("installer", message.lower())
+        self.assertIn("installer.py --with-whisperx", message)
         self.assertNotIn("--local-whisperx", message)
         self.assertNotIn("setup_env", message)
-        self.assertNotIn("optional install", message.lower())
 
     def test_mai_runtime_delivers_word_timing_to_the_shared_pipeline(self):
         from core.asr_backend import mai_asr

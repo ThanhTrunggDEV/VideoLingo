@@ -135,6 +135,12 @@ def run_installer(python_exe: Path, args: argparse.Namespace) -> None:
         cmd.append("--skip-demucs")
     if args.require_demucs:
         cmd.append("--require-demucs")
+    if args.with_whisperx:
+        cmd.append("--with-whisperx")
+    if args.require_whisperx:
+        cmd.append("--require-whisperx")
+    if args.skip_whisperx:
+        cmd.append("--skip-whisperx")
     if args.launch:
         cmd.append("--launch")
     run(cmd, cwd=SCRIPT_DIR, env=env)
@@ -150,6 +156,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auto-mirror", action="store_true", help="auto-select a PyPI mirror before install")
     parser.add_argument("--skip-demucs", action="store_true", help="skip optional Demucs install")
     parser.add_argument("--require-demucs", action="store_true", help="fail if Demucs cannot be installed")
+    parser.add_argument("--with-whisperx", action="store_true", help="also install the opt-in WhisperX local backend")
+    parser.add_argument("--require-whisperx", action="store_true", help="fail if WhisperX cannot be installed")
+    parser.add_argument("--skip-whisperx", action="store_true", help="skip WhisperX even when config selects it")
     parser.add_argument("--launch", action="store_true", help="start VideoLingo after installation")
     parser.add_argument("--force", action="store_true", help="force reinstall staged packages")
     parser.add_argument("--upgrade", action="store_true", help="refresh dependencies within compatibility bounds")

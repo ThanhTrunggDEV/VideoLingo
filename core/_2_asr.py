@@ -13,8 +13,8 @@ def local_backend(whisper):
 
 WHISPERX_NOT_INSTALLED = (
     "WhisperX is not installed. "
-    "Follow the manual page (docs/pages/docs/whisperx-manual.en-US.md) "
-    "and install the extra packages yourself, or set whisper.backend to qwen."
+    "Run `python installer.py --with-whisperx` (Windows/Linux, see "
+    "docs/pages/docs/whisperx-manual.en-US.md), or set whisper.backend to qwen."
 )
 
 def prepare_audio(media_file, media_type, demucs):

@@ -12,13 +12,13 @@ installation.
 The default local ASR is Qwen3-ASR + Qwen3-ForcedAligner, installed from
 requirements.txt (mlx-audio on Apple Silicon, native transformers Qwen3-ASR-hf
 checkpoints elsewhere). The default local TTS OmniVoice is mandatory on
-Windows/Linux/Intel Mac and shares the Transformers 5 stack. This installer
-only installs Qwen + OmniVoice. It does not install WhisperX, prompt for it, or accept a flag
-for it. To use WhisperX, follow docs/pages/docs/whisperx-manual.*.md and install
-the extra packages yourself. On Apple Silicon, a rerun removes a leftover WhisperX
-stack from the default environment (it cannot share huggingface-hub with MLX) and
-does not install WhisperX again. Windows and Linux leave a manual WhisperX install
-in place.
+Windows/Linux/Intel Mac and shares the Transformers 5 stack. WhisperX is an
+opt-in local backend: it is installed automatically when
+``whisper.backend`` is ``whisperx`` in config.yaml or when passed
+``--with-whisperx`` / ``--require-whisperx`` (Windows/Linux only).
+On Apple Silicon it is never installed into the default environment
+(it cannot share huggingface-hub with MLX); use a separate environment and
+follow docs/pages/docs/whisperx-manual.*.md there.
 """
 
 from __future__ import annotations
@@ -47,6 +47,15 @@ TORCH_INDEX = "https://download.pytorch.org/whl"
 BOOTSTRAP_PACKAGES = ["requests", "rich", "ruamel.yaml", "InquirerPy", "packaging"]
 FILTERED_REQUIREMENTS = {"torch", "torchaudio", "torchvision"}
 DEMUCS_REQUIREMENT = "demucs>=4.1.0,<5"
+# Opt-in local ASR backend (Windows/Linux only). Same constraints as
+# docs/pages/docs/whisperx-manual.en-US.md used in 3.0.4: WhisperX 3.8 needs
+# Torch/torchaudio 2.8 + torchvision 0.23, which match this installer.
+WHISPERX_REQUIREMENTS = [
+    "whisperx>=3.8.6,<3.9",
+    "ctranslate2>=4.5,<5",
+    "pyannote-audio>=4.0.4,<5",
+    "torchcodec>=0.7,<0.8",
+]
 
 
 def run(cmd: list[str], retries: int = 0, env: dict[str, str] | None = None) -> None:
@@ -122,6 +131,7 @@ def requirements_hash() -> str:
     torch, torchvision = torch_versions()
     h.update(f"torch={torch};torchvision={torchvision}\n".encode())
     h.update(DEMUCS_REQUIREMENT.encode())
+    h.update(";".join(WHISPERX_REQUIREMENTS).encode())
     return h.hexdigest()
 
 
@@ -334,7 +344,7 @@ def detect_torch_index() -> str:
 
 
 def install_bootstrap() -> None:
-    print("\n[1/6] Bootstrap installer packages")
+    print("\n[1/7] Bootstrap installer packages")
     missing = [pkg for pkg in BOOTSTRAP_PACKAGES if package_version(pkg) is None]
     if missing:
         pip_install(missing)
@@ -345,7 +355,7 @@ def install_bootstrap() -> None:
 def maybe_configure_mirror(auto_mirror: bool) -> None:
     if not auto_mirror:
         return
-    print("\n[2/6] Configure PyPI mirror")
+    print("\n[2/7] Configure PyPI mirror")
     try:
         from core.utils.pypi_autochoose import main as choose_mirror
 
@@ -355,7 +365,7 @@ def maybe_configure_mirror(auto_mirror: bool) -> None:
 
 
 def install_torch(force: bool = False, backend: str = "auto") -> None:
-    print("\n[3/6] Install PyTorch / torchaudio")
+    print("\n[3/7] Install PyTorch / torchaudio")
     torch_version, vision_version = torch_versions()
     gpu = (platform.system() != "Darwin" and detect_nvidia_gpu()) if backend == "auto" else backend != "cpu"
     builds = {(package_version(name) or "").partition("+")[2] or "cpu" for name in ("torch", "torchaudio", "torchvision")}
@@ -376,7 +386,7 @@ def install_torch(force: bool = False, backend: str = "auto") -> None:
 
 
 def install_base_requirements(force: bool = False, upgrade: bool = False) -> None:
-    print("\n[4/6] Install base requirements")
+    print("\n[4/7] Install base requirements")
     remove_whisperx_for_mlx()
     remove_legacy_qwen_asr()
     state = load_state()
@@ -399,7 +409,7 @@ def install_base_requirements(force: bool = False, upgrade: bool = False) -> Non
 
 
 def install_spacy(force: bool = False) -> None:
-    print("\n[5/6] Install spaCy")
+    print("\n[5/7] Install spaCy")
     if not force and package_ok("spacy", "3.8."):
         print(f"  spacy {package_version('spacy')} already installed.")
         return
@@ -409,7 +419,7 @@ def install_spacy(force: bool = False) -> None:
 
 
 def install_demucs(force: bool = False, require: bool = False) -> None:
-    print("\n[6/6] Install Demucs (optional)")
+    print("\n[6/7] Install Demucs (optional)")
     from packaging.version import Version
     if not force and package_version("demucs") is not None and Version("4.1.0") <= Version(package_version("demucs")) < Version("5") and import_ok("demucs.api"):
         print(f"  demucs {package_version('demucs')} already installed.")
@@ -425,6 +435,50 @@ def install_demucs(force: bool = False, require: bool = False) -> None:
     ok = soft_pip_install([DEMUCS_REQUIREMENT], retries=2, extra_args=["--upgrade"])
     if require and not ok:
         raise RuntimeError("Demucs installation failed")
+
+
+def whisperx_packages_healthy() -> bool:
+    """All WhisperX stack packages importable (version bounds checked by health_check)."""
+    if package_version("whisperx") is None:
+        return False
+    return import_ok("whisperx") and import_ok("faster_whisper")
+
+
+def install_whisperx(force: bool = False, require: bool = False) -> bool:
+    print("\n[7/7] Install WhisperX (opt-in local backend)")
+    if apple_silicon():
+        message = (
+            "WhisperX cannot share the default Apple Silicon environment with MLX ASR "
+            "(huggingface-hub <1 vs >=1). Create a separate environment and follow "
+            "docs/pages/docs/whisperx-manual.en-US.md there; this installer will not "
+            "install WhisperX here."
+        )
+        if require:
+            raise RuntimeError(message)
+        print(f"  Warning: {message}")
+        return False
+    if not force and whisperx_packages_healthy():
+        print(f"  whisperx {package_version('whisperx')} already installed.")
+        return True
+    # WhisperX GPU decoding via CTranslate2 needs CUDA 12 cuBLAS + cuDNN 9 on top of
+    # the PyTorch CUDA runtime; pip cannot provide those system libraries.
+    if platform.system() != "Darwin" and detect_nvidia_gpu():
+        print("  NOTE: WhisperX GPU execution also needs CUDA 12 cuBLAS + cuDNN 9 visible "
+              "to Python (see docs/pages/docs/whisperx-manual.en-US.md#cuda-runtime). "
+              "CPU execution works without them.")
+    ok = soft_pip_install(list(WHISPERX_REQUIREMENTS), retries=2, extra_args=["--upgrade"])
+    if not ok:
+        if require:
+            raise RuntimeError("WhisperX installation failed")
+        print("  Warning: WhisperX installation failed; Qwen backend still works. "
+              "Rerun with --require-whisperx to fail loudly, or set whisper.backend back to qwen.")
+        return False
+    if not whisperx_packages_healthy():
+        print("  Warning: WhisperX packages installed but `import whisperx` still fails. "
+              "Check CUDA/cuDNN libraries and rerun installer.py.")
+        return False
+    print(f"  whisperx {package_version('whisperx')} installed.")
+    return True
 
 
 def refresh_project_metadata() -> bool:
@@ -448,10 +502,13 @@ def check_ffmpeg() -> bool:
 
 
 def whisperx_selected() -> bool:
-    """A leftover optional package must not block the default Qwen install."""
+    """Whether config.yaml selects the opt-in WhisperX local backend."""
     from ruamel.yaml import YAML
-    config = YAML(typ="safe").load((ROOT / "config.yaml").read_text(encoding="utf-8"))
-    whisper = config.get("whisper", {})
+    try:
+        config = YAML(typ="safe").load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    whisper = (config or {}).get("whisper", {}) or {}
     return whisper.get("runtime", "local") == "local" and whisper.get("backend", "qwen") == "whisperx"
 
 
@@ -510,7 +567,8 @@ def install_linux_noto_fonts() -> None:
 
 
 def health_check(quiet: bool = False, require_demucs: bool = False, check_state: bool = True,
-                 torch_backend: str = "auto", quick: bool = False) -> int:
+                 torch_backend: str = "auto", quick: bool = False,
+                 require_whisperx: bool = False) -> int:
     errors: list[str] = []
     warnings: list[str] = []
     if sys.version_info[:2] != (3, 12):
@@ -567,6 +625,17 @@ def health_check(quiet: bool = False, require_demucs: bool = False, check_state:
         errors.append("missing optional package required by flag: demucs")
     elif package_version("demucs") is None:
         warnings.append("demucs is not installed; vocal separation will be unavailable")
+    _want_wx = require_whisperx or (whisperx_selected() if not quick else False)
+    if _want_wx and not apple_silicon():
+        from packaging.requirements import Requirement as _Req
+        for _raw in WHISPERX_REQUIREMENTS:
+            _req = _Req(_raw)
+            _installed = package_version(_req.name)
+            if _installed is None or not _req.specifier.contains(_installed):
+                errors.append(f"missing optional package required by WhisperX backend: {_req} (installed: {_installed})")
+    elif package_version("whisperx") is None:
+        warnings.append("whisperx is not installed; Qwen backend still works "
+                        "(install with installer.py --with-whisperx)")
     if platform.system() == "Linux" and not noto_cjk_font_available():
         warnings.append("Noto CJK fonts are not installed; CJK subtitle burn-in may fail")
     try:
@@ -605,11 +674,8 @@ def health_check(quiet: bool = False, require_demucs: bool = False, check_state:
             errors.append(f"WhisperX audio runtime check failed: {exc}")
     if not quiet:
         print("\nEnvironment check")
-        for package in ["streamlit", "torch", "torchaudio", "spacy", qwen_asr_package(), "omnivoice", "vieneu", "demucs"]:
+        for package in ["streamlit", "torch", "torchaudio", "spacy", qwen_asr_package(), "omnivoice", "vieneu", "demucs", "whisperx"]:
             print(f"  {package}: {package_version(package) or 'missing'}")
-        # WhisperX is not part of this install. Mention it only when a manual install is present.
-        if package_version("whisperx"):
-            print(f"  whisperx: {package_version('whisperx')} (not part of this install)")
         for warning in warnings:
             print(f"  WARN: {warning}")
         for error in errors:
@@ -682,11 +748,18 @@ def install_all(args: argparse.Namespace) -> int:
     install_spacy(force=args.force)
     if not args.skip_demucs:
         install_demucs(force=args.force or args.upgrade, require=args.require_demucs)
+    # WhisperX is opt-in: auto-install when the config selects it or when the
+    # flag is given, so users no longer run the manual pip command from docs.
+    want_whisperx = args.with_whisperx or args.require_whisperx or whisperx_selected()
+    if want_whisperx and not args.skip_whisperx:
+        install_whisperx(force=args.force or args.upgrade,
+                         require=args.require_whisperx or whisperx_selected())
     install_project_metadata()
     install_linux_noto_fonts()
     ffmpeg_ok = check_ffmpeg()
     status = health_check(require_demucs=args.require_demucs, check_state=False,
-                          torch_backend=args.torch_backend)
+                          torch_backend=args.torch_backend,
+                          require_whisperx=args.require_whisperx)
     if not ffmpeg_ok or status != 0:
         return 1
     save_state()
@@ -710,6 +783,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auto-mirror", action="store_true", help="auto-select and configure a PyPI mirror")
     parser.add_argument("--skip-demucs", action="store_true", help="skip optional Demucs install")
     parser.add_argument("--require-demucs", action="store_true", help="fail if Demucs cannot be installed")
+    parser.add_argument("--with-whisperx", action="store_true", help="also install the opt-in WhisperX local backend")
+    parser.add_argument("--require-whisperx", action="store_true", help="fail if WhisperX cannot be installed (implies --with-whisperx)")
+    parser.add_argument("--skip-whisperx", action="store_true", help="skip WhisperX even when config selects it")
     parser.add_argument("--launch", action="store_true", help="launch Streamlit after a successful install")
     parser.add_argument("--yes", action="store_true", help="accepted for non-interactive wrappers")
     parser.add_argument("--no-launch", action="store_true", help="compatibility alias; launching is opt-in")
@@ -721,11 +797,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.no_launch:
         args.launch = False
+    if getattr(args, "require_whisperx", False):
+        args.with_whisperx = True
     if args.quick_check:
         return health_check(quiet=args.quiet, require_demucs=args.require_demucs,
-                            torch_backend=args.torch_backend, quick=True)
+                            torch_backend=args.torch_backend, quick=True,
+                            require_whisperx=args.require_whisperx)
     if args.check:
-        return health_check(quiet=args.quiet, require_demucs=args.require_demucs, torch_backend=args.torch_backend)
+        return health_check(quiet=args.quiet, require_demucs=args.require_demucs, torch_backend=args.torch_backend,
+                            require_whisperx=args.require_whisperx)
     return install_all(args)
 
 

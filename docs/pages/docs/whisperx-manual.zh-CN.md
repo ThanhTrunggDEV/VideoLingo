@@ -1,6 +1,6 @@
 # WhisperX（手动安装）
 
-VideoLingo 默认的本地语音识别是 **Qwen3-ASR + Qwen3-ForcedAligner**，见[使用文档](start.zh-CN.md#asr-runtime)。WhisperX 仍然是一个本地后端（`whisper.backend: whisperx`，中文仍强制使用 Belle 模型），但**不是安装器里的选项**。`setup_env.py` 和 `installer.py` 都不会安装它，也不会询问要不要安装，也没有对应开关。本页是唯一的安装说明：额外依赖需要你自己安装。
+VideoLingo 默认的本地语音识别是 **Qwen3-ASR + Qwen3-ForcedAligner**，见[使用文档](start.zh-CN.md#asr-runtime)。WhisperX 是一个可选的本地后端（`whisper.backend: whisperx`，中文仍强制使用 Belle 模型）。只要配置选中它，或给 `installer.py` / `setup_env.py` 传 `--with-whisperx`（仅 Windows/Linux），安装器就会自动安装；下面的手动 pip 命令只在特殊情况下才需要。
 
 以下情况可以考虑改用 WhisperX：想和 Qwen 的结果做对比；希望中文使用带标点增强的 Belle Whisper 模型；已有基于 WhisperX 的使用习惯。
 
@@ -13,9 +13,15 @@ VideoLingo 默认的本地语音识别是 **Qwen3-ASR + Qwen3-ForcedAligner**，
 
 ## 安装
 
-下面的命令由你自己执行。安装器不会代为执行，之后也不会把 WhisperX 装回去。
+自动安装（Windows/Linux 推荐）：把 `config.yaml` 里 `whisper.backend` 设为 `whisperx`，或加开关——安装器会自动装好：
 
-在 Windows 或 Linux 上完成安装后，从 VideoLingo 文件夹运行下面的命令。它使用项目的 `.venv`；如果使用 `--shared`，请把 `.venv` 换成共享环境的路径。不要在 Apple Silicon 的默认环境里执行；Mac 的独立环境见下文。
+```bash
+python installer.py --with-whisperx
+# 或在初始化环境时：
+python setup_env.py --yes --with-whisperx
+```
+
+手动安装（仅特殊情况）：在 Windows 或 Linux 上完成安装后，从 VideoLingo 文件夹运行下面的命令。它使用项目的 `.venv`；如果使用 `--shared`，请把 `.venv` 换成共享环境的路径。不要在 Apple Silicon 的默认环境里执行；Mac 的独立环境见下文。
 
 ```bash
 uv pip install --python .venv "whisperx>=3.8.6,<3.9" "ctranslate2>=4.5,<5" "pyannote-audio>=4.0.4,<5" "torchcodec>=0.7,<0.8"

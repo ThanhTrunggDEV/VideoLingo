@@ -186,7 +186,7 @@
     "Local ASR Backend": "Moteur de reconnaissance local",
     "Qwen3-ASR + ForcedAligner (default)": "Qwen3-ASR + ForcedAligner (par défaut)",
     "WhisperX (manual install)": "WhisperX (installation manuelle)",
-    "WhisperX is not installed. Follow the manual page (docs/pages/docs/whisperx-manual.en-US.md) and install the extra packages yourself, or set whisper.backend to qwen.": "WhisperX n'est pas installé. Suivez la page manuelle (docs/pages/docs/whisperx-manual.en-US.md) et installez vous-même les paquets supplémentaires, ou remettez whisper.backend sur qwen.",
+    "WhisperX is not installed. Run `python installer.py --with-whisperx` (Windows/Linux), or set whisper.backend to qwen. See docs/pages/docs/whisperx-manual.en-US.md.": "WhisperX n'est pas installé. Exécutez `python installer.py --with-whisperx` (Windows/Linux), ou définissez whisper.backend sur qwen. Voir docs/pages/docs/whisperx-manual.en-US.md.",
     "Word-level transcription and alignment": "Transcription et alignement au niveau des mots",
     "Stopping...": "Arrêt en cours...",
     "API check failed": "Échec de la vérification de l'API",

@@ -1,6 +1,6 @@
 # WhisperX (manual install)
 
-VideoLingo's default local speech recognition is **Qwen3-ASR + Qwen3-ForcedAligner**; see the [Start guide](start.en-US.md#asr-runtime). WhisperX is still a local backend (`whisper.backend: whisperx`), including the forced Belle model for Chinese, but it is **not an installer option**. `setup_env.py` and `installer.py` do not install it, do not ask whether to install it, and have no flag for it. This page is the only install guide: you install the extra packages yourself.
+VideoLingo's default local speech recognition is **Qwen3-ASR + Qwen3-ForcedAligner**; see the [Start guide](start.en-US.md#asr-runtime). WhisperX is an opt-in local backend (`whisper.backend: whisperx`), including the forced Belle model for Chinese. It is installed automatically when the config selects it or when you pass `--with-whisperx` to `installer.py` / `setup_env.py` (Windows/Linux only); the manual pip command below is only needed for special cases.
 
 Consider WhisperX when you want to compare against Qwen, want the punctuation-enhanced Belle Whisper model for Chinese, or already rely on a WhisperX-based workflow.
 
@@ -13,9 +13,15 @@ Consider WhisperX when you want to compare against Qwen, want the punctuation-en
 
 ## Install
 
-These commands are for you to run. The installer will not run them and will not install WhisperX back later.
+Automatic (recommended on Windows/Linux): set `whisper.backend: whisperx` in `config.yaml`, or pass the flag — the installer then installs the stack for you:
 
-On Windows or Linux, run this from the VideoLingo folder after setup. It targets the project `.venv`; for a `--shared` environment, replace `.venv` with that environment's path. Do not run it in the default Apple Silicon environment; use a separate environment, as described below.
+```bash
+python installer.py --with-whisperx
+# or at setup time:
+python setup_env.py --yes --with-whisperx
+```
+
+Manual (special cases only): run this from the VideoLingo folder after setup. It targets the project `.venv`; for a `--shared` environment, replace `.venv` with that environment's path. Do not run it in the default Apple Silicon environment; use a separate environment, as described below.
 
 ```bash
 uv pip install --python .venv "whisperx>=3.8.6,<3.9" "ctranslate2>=4.5,<5" "pyannote-audio>=4.0.4,<5" "torchcodec>=0.7,<0.8"
