@@ -14,6 +14,8 @@ SAMPLE_RATE = 24000
 # (which moves everything under output/) never deletes it.
 CUSTOM_REF_DIR = "custom_voice"
 CUSTOM_REF_FILE = "omnivoice_custom_ref.wav"
+# Normalized copy of a reference configured by hand (mp3, other rate/channels).
+NORMALIZED_REF_FILE = "omnivoice_custom_ref_norm.wav"
 # OmniVoice recommends 3-10 s of clear speech of one speaker as the reference
 MIN_REFERENCE_SECONDS = 3.0
 MAX_REFERENCE_SECONDS = 10.0
@@ -27,6 +29,14 @@ _voice_prompt = None
 _voice_prompt_key = None
 _stable_ref_key = None
 _stable_ref_value = None
+_custom_ref_key = None
+_custom_ref_path = None
+
+
+def _file_identity(path):
+    """What the caches compare to notice a replaced file: path, mtime and size."""
+    stat = os.stat(path)
+    return (os.path.abspath(path), stat.st_mtime_ns, stat.st_size)
 
 
 def _resolve_device(device, torch):
@@ -80,7 +90,7 @@ def _get_model(settings):
 def _stable_reference(task_df, out_dir):
     """The first 3-10 s of the video as one reference for all lines: (WAV path, text)."""
     global _stable_ref_key, _stable_ref_value
-    key = (tuple(task_df["number"].tolist()), tuple(str(x) for x in task_df["origin"].tolist()))
+    key = (out_dir, tuple(task_df["number"].tolist()), tuple(str(x) for x in task_df["origin"].tolist()))
     if _stable_ref_key == key and _stable_ref_value is not None:
         return _stable_ref_value
     audio = AudioSegment.empty()
@@ -155,9 +165,14 @@ def save_custom_reference(uploaded_bytes, filename=""):
     return out_path, len(clip) / 1000.0, duration
 
 
-def _custom_reference(out_dir=None):
-    """The user-uploaded reference audio + its transcript, for the whole video."""
-    from core.utils import load_key_or
+def _custom_reference():
+    """The user-uploaded reference audio + its transcript, for the whole video.
+
+    The model gets a 24 kHz mono WAV even when the config points at an mp3 or
+    another rate. The normalized copy is cached per file version, so the file
+    is never decoded or rewritten once per line.
+    """
+    global _custom_ref_key, _custom_ref_path
     ref_audio = str(load_key_or("omnivoice.custom_ref_audio", "") or "")
     ref_text = str(load_key_or("omnivoice.custom_ref_text", "") or "").strip()
     if not ref_audio or not os.path.exists(ref_audio):
@@ -169,22 +184,29 @@ def _custom_reference(out_dir=None):
         raise ValueError(
             "Custom reference text is empty. Enter the exact transcript of the uploaded audio."
         )
-    # Guarantee the model always sees 24 kHz mono WAV, even when the path was
-    # edited by hand in config.yaml instead of via the sidebar upload.
-    try:
-        clip = AudioSegment.from_file(ref_audio)
-        normalized = clip.set_channels(1).set_frame_rate(SAMPLE_RATE).set_sample_width(2)
-        if len(normalized) != len(clip) or ref_audio.lower().endswith((".mp3", ".m4a", ".flac", ".ogg")):
-            normalized.export(ref_audio, format="wav")
-    except Exception:
-        pass
-    return ref_audio, ref_text
+    key = _file_identity(ref_audio)
+    if _custom_ref_key != key or _custom_ref_path is None:
+        normalized_path = ref_audio
+        try:
+            clip = AudioSegment.from_file(ref_audio)
+            needs_conversion = ref_audio.lower().endswith((".mp3", ".m4a", ".flac", ".ogg"))
+            needs_conversion = needs_conversion or (clip.channels, clip.frame_rate, clip.sample_width) != (1, SAMPLE_RATE, 2)
+            if needs_conversion:
+                os.makedirs(CUSTOM_REF_DIR, exist_ok=True)
+                normalized_path = os.path.join(CUSTOM_REF_DIR, NORMALIZED_REF_FILE)
+                clip.set_channels(1).set_frame_rate(SAMPLE_RATE).set_sample_width(2).export(normalized_path, format="wav")
+        except Exception as exc:
+            rprint(f"[yellow]⚠️ Could not normalize the custom reference ({exc}); using it as uploaded.[/yellow]")
+            normalized_path = ref_audio
+        _custom_ref_key = key
+        _custom_ref_path = normalized_path
+    return _custom_ref_path, ref_text
 
 
 def _voice_clone_kwargs(model, ref_audio, ref_text):
     """Encode the reference once and reuse it; fall back to re-passing the audio."""
     global _voice_prompt, _voice_prompt_key
-    key = (os.path.abspath(ref_audio), ref_text)
+    key = (*_file_identity(ref_audio), ref_text)
     if _voice_prompt is None or _voice_prompt_key != key:
         try:
             _voice_prompt = model.create_voice_clone_prompt(ref_audio=ref_audio, ref_text=ref_text)
@@ -208,7 +230,7 @@ def omnivoice_tts(text, save_as, number=None, task_df=None):
         ref_audio, ref_text = _dynamic_reference(task_df, number)
         gen_kwargs = {"ref_audio": ref_audio, "ref_text": ref_text}
     elif refer_mode == "custom":
-        ref_audio, ref_text = _custom_reference(out_dir)
+        ref_audio, ref_text = _custom_reference()
         gen_kwargs = _voice_clone_kwargs(model, ref_audio, ref_text)
     else:
         ref_audio, ref_text = _stable_reference(task_df, out_dir)

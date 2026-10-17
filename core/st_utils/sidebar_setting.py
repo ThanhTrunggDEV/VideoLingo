@@ -515,6 +515,12 @@ def page_setting():
             if selected_mode == "custom":
                 import os
                 from core.tts_backend.omnivoice_tts import save_custom_reference
+                if st.session_state.pop("_omnivoice_custom_clear", False):
+                    # Fresh widgets, so the cleared reference is not saved again from stale state
+                    st.session_state["_omnivoice_custom_epoch"] = st.session_state.get("_omnivoice_custom_epoch", 0) + 1
+                    st.session_state.pop("_omnivoice_custom_upload_id", None)
+                    st.session_state.pop("omnivoice_custom_ref_text", None)
+                epoch = st.session_state.get("_omnivoice_custom_epoch", 0)
                 saved_audio = str(load_key_or("omnivoice.custom_ref_audio", "") or "")
                 saved_text = str(load_key_or("omnivoice.custom_ref_text", "") or "")
                 if saved_audio and os.path.exists(saved_audio):
@@ -525,10 +531,13 @@ def page_setting():
                         pass
                 else:
                     st.warning(t("Upload a 3-10 s clear clip of one speaker and enter its exact transcript."))
+                note = st.session_state.pop("_omnivoice_custom_note", None)
+                if note:
+                    (st.warning if note[0] == "warning" else st.success)(note[1])
                 uploaded = st.file_uploader(
                     t("Upload reference audio"),
                     type=["wav", "mp3", "m4a", "flac", "ogg"],
-                    key="omnivoice_custom_ref",
+                    key=f"omnivoice_custom_ref_{epoch}",
                     help=t("3-10 s of clear speech of one speaker. Used for the whole video."),
                 )
                 if uploaded is not None:
@@ -539,9 +548,9 @@ def page_setting():
                             save_settings({"omnivoice.custom_ref_audio": out_path})
                             st.session_state["_omnivoice_custom_upload_id"] = upload_id
                             if original > kept + 0.05:
-                                st.warning(t("Audio was {orig}s; only the first {kept}s are kept. The transcript must match exactly that kept part — listen to the preview to check.").replace("{orig}", f"{original:.1f}").replace("{kept}", f"{kept:.1f}"))
+                                st.session_state["_omnivoice_custom_note"] = ("warning", t("Audio was {orig}s; only the first {kept}s are kept. The transcript must match exactly that kept part — listen to the preview to check.").replace("{orig}", f"{original:.1f}").replace("{kept}", f"{kept:.1f}"))
                             else:
-                                st.success(t("Reference audio saved ({dur}s): {file}").replace("{dur}", f"{kept:.1f}").replace("{file}", out_path))
+                                st.session_state["_omnivoice_custom_note"] = ("success", t("Reference audio saved ({dur}s): {file}").replace("{dur}", f"{kept:.1f}").replace("{file}", out_path))
                             st.rerun()
                         except Exception as e:
                             st.error(f"{t('Could not use this audio')}: {e}")
@@ -553,11 +562,10 @@ def page_setting():
                 )
                 if ref_text != saved_text:
                     save_settings({"omnivoice.custom_ref_text": ref_text.strip()})
-                    st.rerun()
                 if saved_audio and os.path.exists(saved_audio):
                     if st.button(t("Clear custom reference"), key="omnivoice_custom_clear"):
                         save_settings({"omnivoice.custom_ref_audio": "", "omnivoice.custom_ref_text": ""})
-                        st.session_state.pop("_omnivoice_custom_upload_id", None)
+                        st.session_state["_omnivoice_custom_clear"] = True
                         st.rerun()
             config_input(t("Device"), "omnivoice.device", help=t("auto (cuda:0/mps/cpu), cuda:0, mps, xpu, or cpu"))
             config_input(t("Diffusion steps"), "omnivoice.num_step", help=t("Diffusion steps: 32 for quality, 16 for speed"))
@@ -598,6 +606,11 @@ def page_setting():
             if selected_mode == "custom":
                 import os
                 from core.tts_backend.vieneu_tts import save_custom_reference
+                if st.session_state.pop("_vieneu_custom_clear", False):
+                    # Fresh widgets, so the cleared reference is not saved again from stale state
+                    st.session_state["_vieneu_custom_epoch"] = st.session_state.get("_vieneu_custom_epoch", 0) + 1
+                    st.session_state.pop("_vieneu_custom_upload_id", None)
+                epoch = st.session_state.get("_vieneu_custom_epoch", 0)
                 saved_audio = str(load_key_or("vieneu.custom_ref_audio", "") or "")
                 if saved_audio and os.path.exists(saved_audio):
                     st.caption(t("Custom reference in use: {file}").replace("{file}", saved_audio))
@@ -607,10 +620,13 @@ def page_setting():
                         pass
                 else:
                     st.warning(t("Upload a 3-8 s clear clip of one speaker. VieNeu-TTS v3 needs no transcript."))
+                note = st.session_state.pop("_vieneu_custom_note", None)
+                if note:
+                    (st.warning if note[0] == "warning" else st.success)(note[1])
                 uploaded = st.file_uploader(
                     t("Upload reference audio"),
                     type=["wav", "mp3", "m4a", "flac", "ogg"],
-                    key="vieneu_custom_ref",
+                    key=f"vieneu_custom_ref_{epoch}",
                     help=t("3-8 s of clear speech of one speaker. Used for the whole video."),
                 )
                 if uploaded is not None:
@@ -621,16 +637,16 @@ def page_setting():
                             save_settings({"vieneu.custom_ref_audio": out_path})
                             st.session_state["_vieneu_custom_upload_id"] = upload_id
                             if original > kept + 0.05:
-                                st.warning(t("Audio was {orig}s; only the first {kept}s are kept.").replace("{orig}", f"{original:.1f}").replace("{kept}", f"{kept:.1f}"))
+                                st.session_state["_vieneu_custom_note"] = ("warning", t("Audio was {orig}s; only the first {kept}s are kept.").replace("{orig}", f"{original:.1f}").replace("{kept}", f"{kept:.1f}"))
                             else:
-                                st.success(t("Reference audio saved ({dur}s): {file}").replace("{dur}", f"{kept:.1f}").replace("{file}", out_path))
+                                st.session_state["_vieneu_custom_note"] = ("success", t("Reference audio saved ({dur}s): {file}").replace("{dur}", f"{kept:.1f}").replace("{file}", out_path))
                             st.rerun()
                         except Exception as e:
                             st.error(f"{t('Could not use this audio')}: {e}")
                 if saved_audio and os.path.exists(saved_audio):
                     if st.button(t("Clear custom reference"), key="vieneu_custom_clear"):
                         save_settings({"vieneu.custom_ref_audio": ""})
-                        st.session_state.pop("_vieneu_custom_upload_id", None)
+                        st.session_state["_vieneu_custom_clear"] = True
                         st.rerun()
             if selected_mode in ("stable", "dynamic", "custom"):
                 denoise = st.toggle(

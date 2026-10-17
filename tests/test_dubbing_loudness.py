@@ -128,6 +128,7 @@ def test_reference_audio_uses_raw_track_without_demucs(tmp_path, monkeypatch):
                    'end_time': '00:00:00,500'}]).to_excel(tasks, index=False)
     output = tmp_path / 'refers'
     monkeypatch.setattr(references, 'find_spec', lambda name: None)
+    monkeypatch.setattr(references, 'references_needed', lambda: True)
     monkeypatch.setattr(references, '_RAW_AUDIO_FILE', str(raw))
     monkeypatch.setattr(references, '_8_1_AUDIO_TASK', str(tasks))
     monkeypatch.setattr(references, '_AUDIO_REFERS_DIR', str(output))

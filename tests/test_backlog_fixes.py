@@ -197,6 +197,7 @@ def _refer_audio(monkeypatch, tmp_path):
     monkeypatch.setattr(refer, "_AUDIO_REFERS_DIR", str(refers))
     monkeypatch.setattr(refer, "_AUDIO_SEGS_DIR", str(segs))
     monkeypatch.setattr(refer, "find_spec", lambda name: None)
+    monkeypatch.setattr(refer, "references_needed", lambda: True)
     monkeypatch.setattr(refer.pd, "read_excel", lambda path: pd.DataFrame(
         {"number": [1, 2], "start_time": ["00:00:00,000", "00:00:01,000"], "end_time": ["00:00:01,000", "00:00:02,000"]}))
     monkeypatch.setattr(refer.sf, "read", lambda path: (np.zeros(32000, dtype="float32"), 16000))
@@ -220,6 +221,35 @@ def test_refer_audio_is_skipped_when_references_exist(monkeypatch, tmp_path):
     refer.extract_refer_audio_main()
 
     assert [path.name for path in refers.iterdir()] == ["1.wav"]
+
+
+def test_refer_audio_is_skipped_when_the_mode_does_not_use_it(monkeypatch, tmp_path):
+    refer, refers, _ = _refer_audio(monkeypatch, tmp_path)
+    monkeypatch.setattr(refer, "references_needed", lambda: False)
+
+    refer.extract_refer_audio_main()
+
+    assert not refers.exists()
+
+
+def test_references_needed_knows_the_custom_voice_modes(monkeypatch):
+    import core._9_refer_audio as refer
+
+    values = {"tts_method": "omnivoice", "omnivoice.refer_mode": "custom"}
+    monkeypatch.setattr(refer, "load_key", lambda key: values[key])
+    monkeypatch.setattr(refer, "load_key_or", lambda key, default=None: values.get(key, default))
+
+    assert refer.references_needed() is False
+    values["omnivoice.refer_mode"] = "dynamic"
+    assert refer.references_needed() is True
+
+    values.update({"tts_method": "vieneu", "vieneu.refer_mode": "preset"})
+    assert refer.references_needed() is False
+    values["vieneu.refer_mode"] = "stable"
+    assert refer.references_needed() is True
+
+    values["tts_method"] = "edge_tts"
+    assert refer.references_needed() is True
 
 
 # ------------------------------------------------------------------

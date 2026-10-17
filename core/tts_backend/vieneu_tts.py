@@ -40,6 +40,14 @@ MAX_REFERENCE_SECONDS = 8.0
 _model = None
 _model_lock = threading.Lock()
 _enrolled_key = None
+_stable_ref_key = None
+_stable_ref_value = None
+
+
+def _file_identity(path):
+    """What the caches compare to notice a replaced file: path, mtime and size."""
+    stat = os.stat(path)
+    return (os.path.abspath(path), stat.st_mtime_ns, stat.st_size)
 
 
 def _require_espeak():
@@ -90,6 +98,10 @@ def _get_model(settings):
 
 def _stable_reference(task_df, out_dir):
     """The first 3-8 s of the video as one reference for all lines: WAV path."""
+    global _stable_ref_key, _stable_ref_value
+    key = (out_dir, tuple(task_df["number"].tolist()), tuple(str(x) for x in task_df["origin"].tolist()))
+    if _stable_ref_key == key and _stable_ref_value is not None:
+        return _stable_ref_value
     audio = AudioSegment.empty()
     for _, row in task_df.iterrows():
         path = os.path.join(_AUDIO_REFERS_DIR, f"{row['number']}.wav")
@@ -110,6 +122,8 @@ def _stable_reference(task_df, out_dir):
         )
     ref_path = os.path.join(out_dir, "vieneu_reference.wav")
     audio.set_channels(1).set_frame_rate(16000).set_sample_width(2).export(ref_path, format="wav")
+    _stable_ref_key = key
+    _stable_ref_value = ref_path
     return ref_path
 
 
@@ -160,7 +174,6 @@ def save_custom_reference(uploaded_bytes, filename=""):
 
 def _custom_reference():
     """The user-uploaded reference clip for the whole video (no transcript needed)."""
-    from core.utils import load_key_or
     ref_audio = str(load_key_or("vieneu.custom_ref_audio", "") or "")
     if not ref_audio or not os.path.exists(ref_audio):
         raise FileNotFoundError(
@@ -171,9 +184,9 @@ def _custom_reference():
 
 
 def _enrolled_voice(model, ref_audio, denoise):
-    """Enroll the stable/custom reference once, reuse it by name afterwards."""
+    """Enroll the stable/custom reference once per file version, reuse it by name afterwards."""
     global _enrolled_key
-    key = os.path.abspath(ref_audio)
+    key = (*_file_identity(ref_audio), bool(denoise))
     if _enrolled_key != key:
         try:
             model.add_voice(ENROLLED_NAME, ref_audio, denoise=denoise)
@@ -185,17 +198,17 @@ def _enrolled_voice(model, ref_audio, denoise):
 
 
 def _infer_kwargs(model, refer_mode, task_df, number, out_dir, settings):
-    """(infer_kwargs, use_enrolled_name) for one line."""
+    """infer() keyword arguments for one line."""
     denoise = bool(settings.get("denoise", True))
     if refer_mode == "preset":
         voice = str(settings.get("voice") or DEFAULT_VOICE).strip() or DEFAULT_VOICE
-        return {"voice": voice}, False
+        return {"voice": voice}
     if refer_mode == "dynamic":
-        return {"ref_audio": _dynamic_reference(task_df, number), "denoise": denoise}, False
+        return {"ref_audio": _dynamic_reference(task_df, number), "denoise": denoise}
     if refer_mode == "custom":
-        return {"voice": _enrolled_voice(model, _custom_reference(), denoise)}, True
+        return {"voice": _enrolled_voice(model, _custom_reference(), denoise)}
     # stable (default): first 3-8 s of the video, enrolled once.
-    return {"voice": _enrolled_voice(model, _stable_reference(task_df, out_dir), denoise)}, True
+    return {"voice": _enrolled_voice(model, _stable_reference(task_df, out_dir), denoise)}
 
 
 def _infer(model, text, **kwargs):
@@ -228,7 +241,7 @@ def vieneu_tts(text, save_as, number=None, task_df=None):
             f"got {refer_mode!r}"
         )
     out_dir = str(Path(save_as).parent)
-    gen_kwargs, _ = _infer_kwargs(model, refer_mode, task_df, number, out_dir, settings)
+    gen_kwargs = _infer_kwargs(model, refer_mode, task_df, number, out_dir, settings)
 
     # TTS may run in a ThreadPoolExecutor; serialize model access.
     with _model_lock:

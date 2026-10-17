@@ -23,20 +23,38 @@ def extract_audio(audio_data, sr, start_time, end_time, out_file):
     end = time_to_samples(end_time, sr)
     sf.write(out_file, audio_data[start:end], sr)
 
+def references_needed() -> bool:
+    """Whether the configured dubbing method reads the clips of output/audio/refers."""
+    method = str(load_key("tts_method"))
+    if method == "omnivoice":
+        return str(load_key_or("omnivoice.refer_mode", "stable") or "stable") != "custom"
+    if method == "vieneu":
+        mode = str(load_key_or("vieneu.refer_mode", "stable") or "stable")
+        return mode not in ("preset", "custom")
+    return True
+
 def extract_refer_audio_main():
-    if find_spec("demucs") is not None:
+    # Respect the dubbing settings: demucs still produces the background track
+    # of the final video, but disabled means raw audio and no background.
+    if bool(load_key_or("demucs", False)) and find_spec("demucs") is not None:
         from core.asr_backend.demucs_vl import demucs_audio
         demucs_audio()  # Dubbing normally keeps the original background track.
         reference_audio = _VOCAL_AUDIO_FILE
     else:
-        rprint(Panel(
-            "Vocal separation is unavailable; using the original audio for references. "
-            "The dubbed video will not keep the original background sound.",
-            title="Info", border_style="yellow",
-        ))
+        if find_spec("demucs") is None:
+            message = ("Vocal separation is unavailable; using the original audio for references. "
+                       "The dubbed video will not keep the original background sound.")
+        else:
+            message = ("Vocal separation is off in the config; using the original audio. "
+                       "The dubbed video will not keep the original background sound.")
+        rprint(Panel(message, title="Info", border_style="yellow"))
         reference_audio = _RAW_AUDIO_FILE
     if os.path.exists(os.path.join(_AUDIO_REFERS_DIR, '1.wav')):
         rprint(Panel("Reference audio already exists, skipping extraction", title="Info", border_style="blue"))
+        return
+    if not references_needed():
+        rprint(Panel("The selected dubbing mode does not use the reference clips of the video, "
+                     "skipping extraction", title="Info", border_style="blue"))
         return
 
     # Create output directory
