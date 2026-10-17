@@ -39,8 +39,38 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
 
     Bilibili videos that require sign-in need a cookies.txt path (Download Settings)."""
     os.makedirs(save_path, exist_ok=True)
+    # NOTE: keep this self-contained (no helper calls, only `os` + the names
+    # the proxy test injects): tests/test_download_proxy.py execs this
+    # function in isolation.
+    lowered_url = (url or "").lower()
+    is_bilibili = "bilibili" in lowered_url or "b23.tv" in lowered_url
+    if not is_bilibili:
+        format_sel = 'bestvideo+bestaudio/best' if resolution == 'best' else f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]'
+        bilibili_sort = None
+    elif resolution == 'best' or (str(resolution).isdigit() and int(resolution) >= 720):
+        # 1080p AVC (30080) is refused past ~390MB on this CDN while 1080p
+        # HEVC (30077) serves all ranges: prefer HEVC, fall back to AVC.
+        # (AV01/1000xx dies at ~1.8MB, excluded by both filters.)
+        if resolution == 'best':
+            format_sel = 'bestvideo[vcodec^=hvc1]+bestaudio/bestvideo[vcodec^=avc1]+bestaudio/bestvideo+bestaudio/best'
+        else:
+            format_sel = (
+                f'bestvideo[vcodec^=hvc1][height<={resolution}]+bestaudio/'
+                f'bestvideo[vcodec^=avc1][height<={resolution}]+bestaudio/'
+                f'bestvideo[height<={resolution}]+bestaudio/'
+                f'best[height<={resolution}]/best'
+            )
+        bilibili_sort = ['vcodec:hvc1', 'vcodec:avc1']
+    else:
+        # 360p AVC (30016) is proven to download cleanly: keep AVC first.
+        format_sel = (
+            f'bestvideo[vcodec^=avc1][height<={resolution}]+bestaudio/'
+            f'bestvideo[height<={resolution}]+bestaudio/'
+            f'best[height<={resolution}]/best'
+        )
+        bilibili_sort = ['vcodec:avc1']
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best' if resolution == 'best' else f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]',
+        'format': format_sel,
         'outtmpl': f'{save_path}/%(title)s.%(ext)s',
         'noplaylist': True,
         'writethumbnail': True,
@@ -50,11 +80,27 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
         # when the server throttles or resets the connection: resume the
         # partial file and retry with backoff instead of starting over.
         'continuedl': True,
-        'retries': 10,
-        'fragment_retries': 10,
-        'retry_sleep': 'exp=1:10',
+        'retries': 20,
+        'fragment_retries': 20,
+        'retry_sleep': 'exp=1:30',
         'socket_timeout': 30,
     }
+    if is_bilibili:
+        # Double safety alongside the format string: when the fallback chain
+        # reaches a generic `best`, still rank preferred codecs above AV01.
+        ydl_opts['format_sort'] = bilibili_sort
+        # Bilibili CDN cuts long-lived connections (after ~100-200MB the
+        # speed collapses to tens of KiB/s, then "X bytes read, Y more
+        # expected" until retries run out). Downloading in 10MB chunks opens
+        # a fresh request per chunk, each finishing before the cut: 233MB in
+        # 45s with zero errors vs. stuck at 23% after 20 retries without it.
+        ydl_opts['http_chunk_size'] = 10 * 1024 * 1024
+        # This network resolves the Bilibili CDN (upos-*.akamaized.net) to
+        # IPv6 first, but the IPv6 path stalls: every request dies after
+        # ~1KB ("1022 bytes read, ... more expected" x20, zero progress).
+        # Forcing IPv4 downloads cleanly (294MB in 50s, zero errors).
+        # Same as yt-dlp `--force-ipv4`.
+        ydl_opts['source_address'] = '0.0.0.0'
 
     # None/missing inherits yt-dlp's system/environment proxy discovery.
     # An empty string explicitly disables proxies; a URL overrides discovery.
@@ -72,10 +118,89 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
             raise ValueError(f"Cookies file not found: {cookies_path}")
         ydl_opts["cookiefile"] = cookies_path
 
-    # Get YoutubeDL class after updating
+    # Get YoutubeDL class after updating (once: re-upgrading pip every retry
+    # round would be slow, so reuse the class across rounds below).
     YoutubeDL = update_ytdlp()
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+    # yt-dlp gives up after `retries` failures *in total*, even when every
+    # retry made progress (e.g. 23% -> 29% across 20 retries, then "Giving
+    # up"). For throttled hosts like Bilibili that is wrong: reset the budget
+    # whenever the download grew, and only give up after consecutive rounds
+    # with zero progress. NOTE: os-only on purpose (see NOTE above).
+    last_error = None
+    stagnant_rounds = 0
+    for round_no in range(1, 51):
+        before = 0
+        try:
+            for _name in os.listdir(save_path):
+                try:
+                    before += os.path.getsize(os.path.join(save_path, _name))
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        print(f"[download] Round {round_no}/50: resuming at {before / 1048576:.1f} MiB...")
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            last_error = None
+            break
+        except Exception as e:
+            last_error = e
+            after = 0
+            try:
+                for _name in os.listdir(save_path):
+                    try:
+                        after += os.path.getsize(os.path.join(save_path, _name))
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+            if after > before:
+                stagnant_rounds = 0
+                print(f"[download] Round {round_no} failed but grew +{(after - before) / 1048576:.1f} MiB "
+                      f"(total {after / 1048576:.1f} MiB) - retry budget reset, continuing...")
+            else:
+                stagnant_rounds += 1
+                if stagnant_rounds >= 8:
+                    break
+                # HTTP 503 / refused connections on a throttled CDN mean its
+                # rolling quota window is exhausted: pause so it can slide
+                # instead of hammering a server that answers nothing.
+                # NOTE: __import__ keeps this working where only `os` plus
+                # the injected test names exist (see NOTE above).
+                _cool = min(120 * stagnant_rounds, 600)
+                print(f"[download] Server refused every retry - cooling down {_cool}s "
+                      f"(stagnant {stagnant_rounds}/8)...")
+                __import__("time").sleep(_cool)
+    if last_error is not None:
+        if is_bilibili:
+            done = 0
+            try:
+                for _name in os.listdir(save_path):
+                    try:
+                        done += os.path.getsize(os.path.join(save_path, _name))
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+            raise RuntimeError(
+                f"Bilibili stopped responding at {done / 1048576:.1f} MiB: the server closed every "
+                f"connection ({last_error}). Its CDN throttles large files - try again later to "
+                f"resume, or pick 360p (small enough to finish in one go), or export cookies.txt "
+                f"from a logged-in browser and set it under Download Settings."
+            ) from last_error
+        raise last_error
+
+    # A previous failed attempt (e.g. Bilibili AV01 format 100026 cut off at
+    # ~1.8MB) can leave stale `.part` files behind. The successful download
+    # already removed its own `.part`, so anything left is garbage.
+    # NOTE: os-only on purpose (see NOTE above).
+    for leftover_name in os.listdir(save_path):
+        if leftover_name.endswith(".part") or leftover_name.endswith(".ytdl"):
+            try:
+                os.remove(os.path.join(save_path, leftover_name))
+            except OSError:
+                pass
     
     # Check and rename files after download
     for file in os.listdir(save_path):
