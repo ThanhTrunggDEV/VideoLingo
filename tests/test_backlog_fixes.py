@@ -1239,6 +1239,19 @@ def test_style_is_read_from_a_config_without_the_key(monkeypatch, tmp_path):
     assert module.get_subtitle_style("translation") == module.DEFAULT_STYLE["translation"]
 
 
+def test_update_key_add_missing_creates_a_whole_section(monkeypatch, tmp_path):
+    import core.utils.config_utils as config_utils
+    config = tmp_path / "config.yaml"
+    config.write_text("tts_method: vieneu\n", encoding="utf-8")
+    monkeypatch.setattr(config_utils, "CONFIG_PATH", str(config))
+
+    assert config_utils.update_key("vieneu.backend", "onnx", add_missing=True)
+    assert config_utils.load_key_or("vieneu.backend", "") == "onnx"
+    assert config_utils.load_key_or("vieneu.voice", "default") == "default"
+    assert config_utils.load_key_or("missing.section.key", "default") == "default"
+    assert config_utils.update_key("missing.section.key", "value") is False
+
+
 def test_saving_the_style_keeps_the_comments(monkeypatch, tmp_path):
     import core.utils.config_utils as config_utils
     import core.utils.subtitle_style as module

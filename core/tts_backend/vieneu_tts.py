@@ -226,13 +226,8 @@ def _infer(model, text, **kwargs):
 
 @except_handler("Failed to generate audio using VieNeu-TTS", retry=3, delay=1)
 def vieneu_tts(text, save_as, number=None, task_df=None):
-    try:
-        settings = load_key("vieneu")
-    except KeyError as exc:
-        raise KeyError(
-            "Missing 'vieneu' section in config.yaml. Update config.yaml from the "
-            "template or select VieNeu-TTS in the sidebar once."
-        ) from exc
+    # A config.yaml from an older version has no 'vieneu' section yet: use the defaults.
+    settings = load_key_or("vieneu", {})
     model = _get_model(settings)
     refer_mode = str(settings.get("refer_mode") or "stable").lower()
     if refer_mode not in ("preset", "stable", "dynamic", "custom"):

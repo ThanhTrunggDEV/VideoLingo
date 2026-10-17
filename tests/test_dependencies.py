@@ -681,6 +681,27 @@ def test_mai_sidebar_switches_to_openrouter_on_older_config(monkeypatch, tmp_pat
     assert all('Azure Speech region' not in item.label for item in app.text_input)
 
 
+def test_vieneu_sidebar_renders_with_an_older_config(monkeypatch, tmp_path):
+    from streamlit.testing.v1 import AppTest
+    from core.utils import config_utils
+
+    config = tmp_path / 'config.yaml'
+    data = config_utils.yaml.load((ROOT / 'config.yaml').read_text(encoding='utf-8'))
+    data.pop('vieneu', None)  # a config.yaml written before VieNeu support
+    data['tts_method'] = 'vieneu'
+    with config.open('w', encoding='utf-8') as output:
+        config_utils.yaml.dump(data, output)
+    monkeypatch.setattr(config_utils, 'CONFIG_PATH', str(config))
+
+    app = AppTest.from_file(ROOT / 'st.py', default_timeout=60).run()
+    assert not app.exception
+    backend = next(item for item in app.text_input if item.label == 'VieNeu backend')
+    app = backend.set_value('onnx').run()
+    assert not app.exception
+    saved = config_utils.yaml.load(config.read_text(encoding='utf-8'))
+    assert saved['vieneu']['backend'] == 'onnx'
+
+
 def test_fractional_tts_durations(monkeypatch):
     import pandas as pd
     from core import _10_gen_audio as audio

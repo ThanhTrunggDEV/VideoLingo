@@ -220,7 +220,8 @@ def _voice_clone_kwargs(model, ref_audio, ref_text):
 
 @except_handler("Failed to generate audio using OmniVoice", retry=3, delay=1)
 def omnivoice_tts(text, save_as, number=None, task_df=None):
-    settings = load_key("omnivoice")
+    # A config.yaml from an older version has no 'omnivoice' section yet: use the defaults.
+    settings = load_key_or("omnivoice", {})
     model = _get_model(settings)
     refer_mode = settings.get("refer_mode") or "stable"
     num_step = int(settings.get("num_step") or 32)

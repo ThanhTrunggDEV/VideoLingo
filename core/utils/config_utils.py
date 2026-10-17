@@ -34,7 +34,8 @@ def load_key_or(key, default):
         return default
 
 def update_key(key, new_value, add_missing=False):
-    """Set an existing key; add_missing=True also creates a new leaf (settings added after the user's config.yaml)."""
+    """Set an existing key; add_missing=True also creates a missing leaf and its sections
+    (settings added after the user's config.yaml, e.g. the 'vieneu' section)."""
     with lock:
         with open(CONFIG_PATH, 'r', encoding='utf-8') as file:
             data = yaml.load(file)
@@ -43,6 +44,9 @@ def update_key(key, new_value, add_missing=False):
         current = data
         for k in keys[:-1]:
             if isinstance(current, dict) and k in current:
+                current = current[k]
+            elif isinstance(current, dict) and add_missing:
+                current[k] = {}
                 current = current[k]
             else:
                 return False

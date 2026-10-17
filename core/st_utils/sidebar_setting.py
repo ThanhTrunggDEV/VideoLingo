@@ -8,10 +8,11 @@ from core.utils.ask_gpt import is_local_endpoint, normalize_base_url
 
 
 def config_input(label, key, help=None, placeholder=None):
-    """Generic config input handler"""
-    val = st.text_input(label, value=load_key(key), help=help, placeholder=placeholder)
-    if val != load_key(key):
-        update_key(key, val)
+    """Generic config input handler (a config.yaml from an older version may miss the key)."""
+    current = load_key_or(key, "")
+    val = st.text_input(label, value=current, help=help, placeholder=placeholder)
+    if val != current:
+        update_key(key, val, add_missing=True)
     return val
 
 
