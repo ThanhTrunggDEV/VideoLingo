@@ -72,6 +72,14 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
     ydl_opts = {
         'format': format_sel,
         'outtmpl': f'{save_path}/%(title)s.%(ext)s',
+        # Linux caps filenames at 255 bytes and CJK characters take 3-4 bytes
+        # each: a long Bilibili title passes at `<title>.jpg` but the video
+        # stream is fetched as `<title>.f<id>.mp4.part` and the extra suffix
+        # overflows ("File name too long"), failing every retry round.
+        # trim_file_name counts the full path in characters (4 bytes worst
+        # case), so 55 keeps `output/` + title <= 220 bytes and every suffix
+        # yt-dlp appends afterwards (`.f30066.mp4.part`) still fits.
+        'trim_file_name': 55,
         'noplaylist': True,
         'writethumbnail': True,
         'merge_output_format': 'mp4',

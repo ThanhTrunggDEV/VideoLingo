@@ -80,6 +80,29 @@ class BilibiliCdnFallbackTests(unittest.TestCase):
         sleep.assert_called_once_with(120)
 
 
+class LongFilenameTests(unittest.TestCase):
+    TITLE = ("前辈，求你别装了！一座清幽小院，一场看似寻常的隐居生活。景浦只想安安静静种田、饮茶、"
+             "做些凡人日子里的小事，却不知自己随手留下的一物一言，在修仙者眼中皆藏着难以揣")
+
+    def test_long_titles_stay_within_the_255_byte_filename_limit(self):
+        from yt_dlp import YoutubeDL
+
+        calls, _ = BilibiliCdnFallbackTests()._run(
+            "https://www.bilibili.com/video/BV1xx411c7mD/", failures=0)
+        opts = calls[0].opts
+        for title in (self.TITLE, "😀" * 80):
+            with self.subTest(first_char=title[0]):
+                with YoutubeDL({**opts, "outtmpl": "output/%(title)s.%(ext)s", "quiet": True},
+                               auto_init=False) as ydl:
+                    name = ydl.prepare_filename(
+                        {"title": title, "ext": "mp4", "format_id": "30066", "id": "BV1"})
+                # yt-dlp writes the video stream as <name>.f<id>.mp4.part first:
+                # the suffix that overflowed the 255-byte limit before trimming.
+                part = name[:-len(".mp4")] + ".f30066.mp4.part"
+                self.assertLessEqual(len(part.encode()), 255)
+                self.assertIn(title[0], name)
+
+
 class FindVideoFilesTests(unittest.TestCase):
     @patch.object(_1_ytdlp, "load_key", return_value=["mp4"])
     def test_keeps_output_prefixed_inputs_and_ignores_generated_videos(self, _):
