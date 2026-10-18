@@ -118,9 +118,39 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
             raise ValueError(f"Cookies file not found: {cookies_path}")
         ydl_opts["cookiefile"] = cookies_path
 
+    # Mirror CDN hosts for Bilibili media. The primary Akamai host
+    # (upos-hz-mirrorakam.akamaized.net) sometimes keeps a truncated copy of
+    # a file: it serves the first N MiB, then answers every range request at
+    # the cut-off with 36 bytes / an empty reply, while the mirrors serve the
+    # very same signed URL (byte-identical by md5). Rotating hosts lets a
+    # stalled download resume from the partial file on another edge.
+    bilibili_mirrors = [
+        'upos-sz-mirrorcos.bilivideo.com',
+        'upos-sz-mirrorhw.bilivideo.com',
+        'upos-sz-mirror08c.bilivideo.com',
+    ]
+
     # Get YoutubeDL class after updating (once: re-upgrading pip every retry
     # round would be slow, so reuse the class across rounds below).
     YoutubeDL = update_ytdlp()
+
+    def make_downloader(mirror):
+        """YoutubeDL variant that serves Bilibili media from `mirror`."""
+        if mirror is None:
+            return YoutubeDL
+
+        class MirrorYoutubeDL(YoutubeDL):
+            def process_info(self, info_dict):
+                for fmt in (info_dict.get('requested_formats') or (info_dict,)):
+                    media_url = fmt.get('url') or ''
+                    if '/upgcxcode/' in media_url:
+                        scheme, _, rest = media_url.partition('://')
+                        _, _, path = rest.partition('/')
+                        fmt['url'] = f'{scheme}://{mirror}/{path}'
+                return super().process_info(info_dict)
+
+        return MirrorYoutubeDL
+
     # yt-dlp gives up after `retries` failures *in total*, even when every
     # retry made progress (e.g. 23% -> 29% across 20 retries, then "Giving
     # up"). For throttled hosts like Bilibili that is wrong: reset the budget
@@ -128,7 +158,10 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
     # with zero progress. NOTE: os-only on purpose (see NOTE above).
     last_error = None
     stagnant_rounds = 0
+    cdn_plan = [None] + (bilibili_mirrors if is_bilibili else [])
+    cdn_index = 0
     for round_no in range(1, 51):
+        mirror = cdn_plan[cdn_index % len(cdn_plan)]
         before = 0
         try:
             for _name in os.listdir(save_path):
@@ -138,9 +171,10 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
                     pass
         except OSError:
             pass
-        print(f"[download] Round {round_no}/50: resuming at {before / 1048576:.1f} MiB...")
+        via = f" via {mirror}" if mirror else ""
+        print(f"[download] Round {round_no}/50: resuming at {before / 1048576:.1f} MiB{via}...")
         try:
-            with YoutubeDL(ydl_opts) as ydl:
+            with make_downloader(mirror)(ydl_opts) as ydl:
                 ydl.download([url])
             last_error = None
             break
@@ -161,17 +195,22 @@ def download_video_ytdlp(url, save_path='output', resolution='1080'):
                       f"(total {after / 1048576:.1f} MiB) - retry budget reset, continuing...")
             else:
                 stagnant_rounds += 1
+                # The next round switches to the next CDN host: a truncated
+                # copy on one edge says nothing about the mirrors.
+                cdn_index += 1
                 if stagnant_rounds >= 8:
                     break
-                # HTTP 503 / refused connections on a throttled CDN mean its
-                # rolling quota window is exhausted: pause so it can slide
-                # instead of hammering a server that answers nothing.
+                # Only pause once every host stalled a full sweep without
+                # progress: HTTP 503 / refused connections on a throttled CDN
+                # mean its rolling quota window is exhausted, while a fresh
+                # host may resume exactly where this one refused.
                 # NOTE: __import__ keeps this working where only `os` plus
                 # the injected test names exist (see NOTE above).
-                _cool = min(120 * stagnant_rounds, 600)
-                print(f"[download] Server refused every retry - cooling down {_cool}s "
-                      f"(stagnant {stagnant_rounds}/8)...")
-                __import__("time").sleep(_cool)
+                if cdn_index % len(cdn_plan) == 0:
+                    _cool = min(120 * (stagnant_rounds // len(cdn_plan)), 600)
+                    print(f"[download] All CDNs refused every retry - cooling down {_cool}s "
+                          f"(stagnant {stagnant_rounds}/8)...")
+                    __import__("time").sleep(_cool)
     if last_error is not None:
         if is_bilibili:
             done = 0

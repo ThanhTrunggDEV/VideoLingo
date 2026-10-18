@@ -6,6 +6,79 @@ from unittest.mock import patch
 
 from core import _1_ytdlp
 
+MIRROR = "upos-sz-mirrorcos.bilivideo.com"
+
+
+class BilibiliCdnFallbackTests(unittest.TestCase):
+    def _run(self, url, failures=1):
+        calls = []
+
+        class FakeYDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def process_info(self, info_dict):
+                return True
+
+            def download(self, urls):
+                calls.append(self)
+                if len(calls) <= failures:
+                    raise RuntimeError("Got error: 36 bytes read, 10247976 more expected")
+
+        with tempfile.TemporaryDirectory() as temp_dir, \
+                patch.object(_1_ytdlp, "load_key", return_value={}), \
+                patch.object(_1_ytdlp, "update_ytdlp", return_value=FakeYDL), \
+                patch.object(_1_ytdlp, "find_video_files", return_value="synthetic.mp4"), \
+                patch.object(_1_ytdlp, "write_input_manifest", return_value=None):
+            _1_ytdlp.download_video_ytdlp(url, temp_dir)
+        return calls, FakeYDL
+
+    def test_stalled_round_switches_to_a_mirror_and_rewrites_the_format_urls(self):
+        calls, FakeYDL = self._run("https://www.bilibili.com/video/BV1xx411c7mD/")
+
+        self.assertEqual(len(calls), 2)
+        self.assertIs(type(calls[0]), FakeYDL)
+        self.assertTrue(issubclass(type(calls[1]), FakeYDL))
+        self.assertIsNot(type(calls[1]), FakeYDL)
+        info = {"requested_formats": [
+            {"url": "https://upos-hz-mirrorakam.akamaized.net/upgcxcode/1/2/3.m4s?e=x"},
+            {"url": "https://upos-hz-mirrorakam.akamaized.net/upgcxcode/4/5/6.m4s?e=y"},
+        ]}
+        self.assertTrue(calls[1].process_info(info))
+        self.assertEqual(info["requested_formats"][0]["url"],
+                         f"https://{MIRROR}/upgcxcode/1/2/3.m4s?e=x")
+        self.assertEqual(info["requested_formats"][1]["url"],
+                         f"https://{MIRROR}/upgcxcode/4/5/6.m4s?e=y")
+
+    def test_single_format_url_is_rewritten_too_and_other_urls_are_kept(self):
+        calls, _ = self._run("https://www.bilibili.com/video/BV1xx411c7mD/")
+
+        info = {"url": "https://upos-hz-mirrorakam.akamaized.net/upgcxcode/1/2/3.m4s?e=x"}
+        calls[1].process_info(info)
+        self.assertEqual(info["url"], f"https://{MIRROR}/upgcxcode/1/2/3.m4s?e=x")
+
+        untouched = {"url": "https://i0.hdslb.com/bfs/archive/cover.jpg"}
+        calls[1].process_info(untouched)
+        self.assertEqual(untouched["url"], "https://i0.hdslb.com/bfs/archive/cover.jpg")
+
+    def test_non_bilibili_urls_never_switch_hosts(self):
+        calls, FakeYDL = self._run("https://video.example.com/item", failures=0)
+
+        self.assertEqual(len(calls), 1)
+        self.assertIs(type(calls[0]), FakeYDL)
+
+    def test_giving_up_after_a_full_sweep_of_stalled_cdns(self):
+        with patch("time.sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "Bilibili stopped responding"):
+                self._run("https://www.bilibili.com/video/BV1xx411c7mD/", failures=8)
+        sleep.assert_called_once_with(120)
+
 
 class FindVideoFilesTests(unittest.TestCase):
     @patch.object(_1_ytdlp, "load_key", return_value=["mp4"])
