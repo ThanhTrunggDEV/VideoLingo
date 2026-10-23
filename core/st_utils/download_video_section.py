@@ -25,41 +25,68 @@ def _inject_file_uploader_i18n():
     #     > div     (column flex)
     #         > span  (1st: "Drag and drop ... here")
     #         > span  (2nd: "Limit ... · MP4, MOV ...")
-    # So we target ONLY the two direct child spans of the inner div, leaving
-    # the icon and other elements untouched.
+    # Streamlit 1.66 DOM: the inner div holds a single native line with the
+    # limit and the accepted formats, and the browse button is labelled
+    # "Upload". The :has() guard keeps the legacy replacements from hiding
+    # that native line, and the selectors are scoped to the two uploaders of
+    # this section so the other uploaders keep their own text.
     drag_text = _css_text(t("Drag and drop file here"))
     limit_text = _css_text(t("Limit 4GB per file · MP4, MOV, AVI, MKV, FLV, WMV, WEBM, WAV, MP3, FLAC, M4A"))
     browse_text = _css_text(t("Browse files"))
     st.markdown(
         f"""
         <style>
-        /* Title line */
-        div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(1) {{
+        /* Legacy two-line dropzone: translate both lines */
+        .st-key-media_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:has(> span:nth-of-type(2)) > span:nth-of-type(1),
+        .st-key-subtitle_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:has(> span:nth-of-type(2)) > span:nth-of-type(1) {{
             font-size: 0 !important;
             line-height: 1.4;
         }}
-        div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(1)::before {{
+        .st-key-media_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:has(> span:nth-of-type(2)) > span:nth-of-type(1)::before,
+        .st-key-subtitle_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:has(> span:nth-of-type(2)) > span:nth-of-type(1)::before {{
             content: "{drag_text}";
             font-size: 1rem;
         }}
-        /* Sub line (limit + accepted formats) */
-        div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(2) {{
+        /* Legacy sub line (limit + accepted formats) */
+        .st-key-media_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(2),
+        .st-key-subtitle_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(2) {{
             font-size: 0 !important;
             line-height: 1.4;
         }}
-        div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(2)::before {{
+        .st-key-media_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(2)::before {{
             content: "{limit_text}";
             font-size: 0.8rem;
         }}
         /* The uploader of the subtitles takes SRT files only */
         .st-key-subtitle_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div > span:nth-of-type(2)::before {{
             content: "SRT";
+            font-size: 0.8rem;
         }}
-        /* Browse files button */
-        div[data-testid="stFileUploader"] button[kind="secondary"] {{
+        /* New single-line dropzone: translate the native limit line */
+        .st-key-media_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:not(:has(> span:nth-of-type(2))) > span:nth-of-type(1),
+        .st-key-subtitle_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:not(:has(> span:nth-of-type(2))) > span:nth-of-type(1) {{
+            font-size: 0 !important;
+            line-height: 1.4;
+        }}
+        .st-key-media_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:not(:has(> span:nth-of-type(2))) > span:nth-of-type(1)::before {{
+            content: "{limit_text}";
+            font-size: 0.8rem;
+        }}
+        .st-key-subtitle_upload div[data-testid="stFileUploaderDropzoneInstructions"] > div:not(:has(> span:nth-of-type(2))) > span:nth-of-type(1)::before {{
+            content: "SRT";
+            font-size: 0.8rem;
+        }}
+        /* Browse files button: replace the label, keep the icon */
+        .st-key-media_upload div[data-testid="stFileUploader"] button[kind="secondary"],
+        .st-key-subtitle_upload div[data-testid="stFileUploader"] button[kind="secondary"] {{
             font-size: 0 !important;
         }}
-        div[data-testid="stFileUploader"] button[kind="secondary"]::before {{
+        .st-key-media_upload div[data-testid="stFileUploader"] button[kind="secondary"] [data-testid="stMarkdownContainer"],
+        .st-key-subtitle_upload div[data-testid="stFileUploader"] button[kind="secondary"] [data-testid="stMarkdownContainer"] {{
+            display: none !important;
+        }}
+        .st-key-media_upload div[data-testid="stFileUploader"] button[kind="secondary"]::before,
+        .st-key-subtitle_upload div[data-testid="stFileUploader"] button[kind="secondary"]::before {{
             content: "{browse_text}";
             font-size: 0.875rem;
         }}
@@ -68,10 +95,44 @@ def _inject_file_uploader_i18n():
         unsafe_allow_html=True,
     )
 
-def upload_subtitles(label, hint, new_input=False):
-    """Subtitles of the user for the input. True when they were added, the page has to run again then."""
+
+def _uploaded_name(filename):
+    """A safe output name for an uploaded media file, never a hidden one."""
+    name = filename.replace(' ', '_')
+    stem, dot, extension = name.rpartition('.')
+    if dot and extension:
+        clean_ext = "." + extension.lower()
+        media_ext = extension.lower()
+    else:
+        stem, clean_ext, media_ext = name, "", ""
+    base = re.sub(r'[^\w\-\.]', '', stem).strip('.') or "media"
+    return base + clean_ext, media_ext
+
+
+def _save_uploaded_media(uploaded_file, upload_id):
+    """Write the uploaded media file to output/ and remember it as the input."""
+    if os.path.exists(OUTPUT_DIR):
+        shutil.rmtree(OUTPUT_DIR)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    clean_name, media_ext = _uploaded_name(uploaded_file.name)
+    media_path = os.path.join(OUTPUT_DIR, clean_name)
+    with open(media_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    media_type = "video" if media_ext in load_key("allowed_video_formats") else "audio"
+    write_input_manifest(media_path, media_type)
+    st.session_state["_processed_upload_id"] = upload_id
+    return True
+
+
+def _subtitle_uploader(label, hint):
     with st.container(key="subtitle_upload"):
-        uploaded_file = st.file_uploader(label, type=["srt"], help=hint)
+        return st.file_uploader(label, type=["srt"], help=hint)
+
+
+def _add_uploaded_subtitles(uploaded_file, new_input=False):
+    """Save the uploaded subtitles. True when they were added, the page has to run again then."""
     if not uploaded_file:
         return False
     try:
@@ -83,6 +144,11 @@ def upload_subtitles(label, hint, new_input=False):
         shutil.rmtree(OUTPUT_DIR)
     add_input_subtitles(uploaded_file.name.replace(' ', '_'), uploaded_file.getvalue())
     return True
+
+
+def upload_subtitles(label, hint, new_input=False):
+    """Subtitles of the user for the input. True when they were added, the page has to run again then."""
+    return _add_uploaded_subtitles(_subtitle_uploader(label, hint), new_input)
 
 
 def input_subtitles_section(media_type):
@@ -167,38 +233,29 @@ def download_video_section():
                 st.rerun()
 
         _inject_file_uploader_i18n()
-        uploaded_file = st.file_uploader(t("Upload local media file"), type=load_key("allowed_video_formats") + load_key("allowed_audio_formats"))
+        with st.container(key="media_upload"):
+            uploaded_file = st.file_uploader(t("Upload local media file"), type=load_key("allowed_video_formats") + load_key("allowed_audio_formats"))
+        uploaded_subtitles = _subtitle_uploader(
+            t("Or upload subtitles without a video (SRT)"),
+            t("The subtitles are translated with their own lines and times. For a video with these subtitles, upload the video first and add the subtitles below it"),
+        )
+
+        media_added = False
+        media_present = False
         if uploaded_file:
             upload_id = f"{uploaded_file.name}:{uploaded_file.size}"
             if st.session_state.get("_processed_upload_id") == upload_id:
                 try:
                     find_media_file()
+                    media_present = True
                     st.warning(t("Upload was already processed. Delete and reselect to upload again."))
-                    return False
                 except Exception:
                     st.session_state.pop("_processed_upload_id", None)
+                    media_added = _save_uploaded_media(uploaded_file, upload_id)
+            else:
+                media_added = _save_uploaded_media(uploaded_file, upload_id)
 
-            if os.path.exists(OUTPUT_DIR):
-                shutil.rmtree(OUTPUT_DIR)
-            os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-            raw_name = uploaded_file.name.replace(' ', '_')
-            name, ext = os.path.splitext(raw_name)
-            clean_name = re.sub(r'[^\w\-_\.]', '', name) + ext.lower()
-                
-            with open(os.path.join(OUTPUT_DIR, clean_name), "wb") as f:
-                f.write(uploaded_file.getbuffer())
-
-            media_path = os.path.join(OUTPUT_DIR, clean_name)
-            media_ext = ext.lower().lstrip(".")
-            media_type = "video" if media_ext in load_key("allowed_video_formats") else "audio"
-            write_input_manifest(media_path, media_type)
-
-            st.session_state["_processed_upload_id"] = upload_id
-            st.rerun()
-
-        if upload_subtitles(t("Or upload subtitles without a video (SRT)"),
-                            t("The subtitles are translated with their own lines and times. For a video with these subtitles, upload the video first and add the subtitles below it"),
-                            new_input=True):
+        subtitles_added = _add_uploaded_subtitles(uploaded_subtitles, new_input=not (media_added or media_present))
+        if media_added or subtitles_added:
             st.rerun()
         return False
